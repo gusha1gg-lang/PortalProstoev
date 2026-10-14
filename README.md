@@ -79,6 +79,7 @@ docker compose up -d
 ./.venv/bin/python manage.py seed_sla           # демо-договоры SLA
 ./.venv/bin/python manage.py seed_notifications # демо-правила уведомлений
 ./.venv/bin/python manage.py seed_users         # демо-пользователи по ролям
+# либо всё сразу: ./.venv/bin/python manage.py seed_demo
 # (необязательно) импорт простоев из источника в mock-режиме
 ./.venv/bin/python manage.py import_oracle
 
@@ -121,6 +122,8 @@ docker compose up -d
 - [`docs/источник-данных-oracle.md`](docs/источник-данных-oracle.md) — структура источника простоев.
 - [`docs/план.md`](docs/план.md) — план разработки по этапам.
 - [`docs/README.md`](docs/README.md) — оглавление всей документации.
+- [`docs/приёмка.md`](docs/приёмка.md) — демонстрация mock-версии, форма замечаний (Этап 11).
+- [`docs/КЗ.md`](docs/КЗ.md) — рабочее КЗ на утверждение (🅱️ Гейт B).
 
 ## Правила ведения проекта
 - **`README.md` и `AGENTS.MD` обновляются при каждом изменении**, затрагивающем запуск, стек,
