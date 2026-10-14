@@ -8,6 +8,7 @@
 """
 from collections import defaultdict
 from datetime import timedelta
+from decimal import Decimal
 
 from django.utils import timezone
 
@@ -58,6 +59,9 @@ def _human_value(obj, field):
     value = getattr(obj, field)
     if value is None:
         return ""
+    if isinstance(value, Decimal):
+        # Одинаково показываем число из БД и из памяти (0.000 и 0 — это одно и то же).
+        return format(value.normalize(), "f")
     if hasattr(value, "pk"):  # объект-справочник (ForeignKey)
         return str(value)
     if hasattr(value, "strftime"):

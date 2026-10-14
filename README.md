@@ -12,7 +12,7 @@
 - **Источник простоев:** Oracle DB (второй уровень), read-only через `python-oracledb`
 - **ITIL-тикеты:** OMNITRACKER
 - **Аутентификация:** ADFS (`django-auth-adfs`), маппинг групп AD → роли
-- **Тесты:** pytest + pytest-django
+- **Тесты:** встроенный Django-раннер (`manage.py test`) + автопрогон в GitHub Actions
 - **Инфра:** Docker + docker-compose
 
 Стек выбран сознательно простым: приоритет — понятность и сопровождаемость, а не «модность».
@@ -92,6 +92,14 @@ docker compose up -d
 журнал уведомлений — /notifications/, админка — /admin/.
 Подробно — в [`docs/каркас.md`](docs/каркас.md) и [`docs/модуль-accounts.md`](docs/модуль-accounts.md).
 
+## Тесты
+```bash
+./.venv/bin/python manage.py test              # все тесты
+./.venv/bin/python manage.py test apps.sla     # тесты одного модуля
+```
+У каждого модуля свой файл `apps/<модуль>/tests.py`. Тесты запускаются автоматически при
+каждом push в GitHub (файл `.github/workflows/tests.yml`).
+
 ## Принципы разработки
 - Мок-режим обязателен: проект собирается и работает без доступа в домен.
 - Секреты только в `.env` / `.env.example`.
@@ -110,8 +118,9 @@ docker compose up -d
 - `docs/модуль-reports.md` — дашборд, KPI, SLA-отчёт и выгрузка (Этап 7).
 - `docs/модуль-notifications.md` — уведомления и эскалации по email (Этап 8).
 - `docs/модуль-accounts.md` — вход, роли и заготовка ADFS (Этап 9).
-- `docs/источник-данных-oracle.md` — структура источника простоев.
-- `docs/план.md` — план разработки по этапам.
+- [`docs/источник-данных-oracle.md`](docs/источник-данных-oracle.md) — структура источника простоев.
+- [`docs/план.md`](docs/план.md) — план разработки по этапам.
+- [`docs/README.md`](docs/README.md) — оглавление всей документации.
 
 ## Правила ведения проекта
 - **`README.md` и `AGENTS.MD` обновляются при каждом изменении**, затрагивающем запуск, стек,
