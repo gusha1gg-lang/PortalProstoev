@@ -33,7 +33,8 @@
 ```
 INTEGRATION_MODE=mock        # mock | live   (Oracle DB, OMNITRACKER)
 AUTH_MODE=dev                # dev  | adfs   (вход: dev-логин | ADFS)
-DATABASE_URL=...             # локальный PostgreSQL
+DATABASE_URL=...             # локальный PostgreSQL (порт 5433)
+POSTGRES_*                   # параметры БД, см. .env.example
 ```
 
 ## Структура проекта
