@@ -1,0 +1,63 @@
+{% extends "admin/base_site.html" %}
+
+{% block breadcrumbs %}
+  <div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">Начало</a>
+    &rsaquo; <a href="{% url 'admin:app_list' app_label=opts.app_label %}">{{ opts.app_config.verbose_name }}</a>
+    &rsaquo; <a href="{% url 'admin:downtimes_downtimeevent_changelist' %}">Простои</a>
+    &rsaquo; Возможные дубли
+  </div>
+{% endblock %}
+
+{% block content %}
+  <h1>Возможные дубли</h1>
+  <p>
+    Записи ниже не входят в кейс, но похожи: одинаковое примечание, одно предприятие
+    и близкое время начала. Отметьте группу кнопкой, чтобы объединить её в один кейс.
+    Длительность пересчитается без двойного счёта.
+  </p>
+
+  {% if groups %}
+    {% for group in groups %}
+      <div class="module" style="margin-bottom:16px;">
+        <h2 style="padding:8px 10px; background:#f8f8f8; margin:0;">
+          {{ group.0.note|default:"(без примечания)" }}
+          <span style="font-weight:normal; color:#666;">
+            — {{ group|length }} записей, {{ group.0.workshop.enterprise.name }} / {{ group.0.workshop.name }}
+          </span>
+        </h2>
+        <table style="width:100%;">
+          <thead>
+            <tr>
+              <th>Начало</th><th>Окончание</th><th>Участок</th><th>Агрегат</th>
+              <th>Кто зафиксировал</th><th>Длительность</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for e in group %}
+              <tr>
+                <td>{{ e.started_at|date:"d.m.Y H:i" }}</td>
+                <td>{{ e.ended_at|date:"d.m.Y H:i"|default:"—" }}</td>
+                <td>{{ e.section|default:"—" }}</td>
+                <td>{{ e.unit|default:"—" }}</td>
+                <td>{{ e.recorded_by_name|default:"—" }}</td>
+                <td>{{ e.duration_min }} мин</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        <div style="padding:8px 10px;">
+          <form method="post">
+            {% csrf_token %}
+            {% for e in group %}<input type="hidden" name="events" value="{{ e.id }}">{% endfor %}
+            <button type="submit" class="button default">Объединить эти {{ group|length }} записи в один кейс</button>
+          </form>
+        </div>
+      </div>
+    {% endfor %}
+  {% else %}
+    <p class="help">Возможных дублей не найдено.</p>
+  {% endif %}
+
+  <p><a href="{% url 'admin:downtimes_downtimeevent_changelist' %}">&larr; Назад к простоям</a></p>
+{% endblock %}

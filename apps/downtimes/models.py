@@ -110,6 +110,17 @@ class DowntimeEvent(TimeStampedModel):
     external_id = models.CharField("Внешний ID", max_length=128, null=True, blank=True)
     raw = models.JSONField("Исходные данные", null=True, blank=True)
 
+    # --- Объединение в кейс (этап 4) ---
+    # Пусто = простой считается сам по себе. Если задан — учитывается в кейсе, отдельно не считается.
+    case = models.ForeignKey(
+        "DowntimeCase",
+        on_delete=models.SET_NULL,
+        related_name="events",
+        verbose_name="Кейс",
+        null=True,
+        blank=True,
+    )
+
     # --- Аудит авторства ---
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -204,3 +215,120 @@ class DowntimeEventLog(TimeStampedModel):
 
     def __str__(self):
         return f"{self.get_action_display()} · {self.event_id} · {self.created_at:%d.%m.%Y %H:%M}"
+
+
+class DowntimeCase(TimeStampedModel):
+    """
+    Кейс — «настоящий» инцидент, в который собраны дублирующие записи о простоях.
+
+    Длительность считается объединением интервалов входящих событий:
+    перекрывающиеся куски считаются один раз (без двойного счёта).
+    """
+
+    class Status(models.TextChoices):
+        OPEN = "open", "Открыт"
+        CONFIRMED = "confirmed", "Подтверждён"
+        CLOSED = "closed", "Закрыт"
+        CANCELED = "canceled", "Отменён"
+
+    number = models.CharField("Номер", max_length=32, unique=True, editable=False)
+    title = models.CharField("Название", max_length=255)
+    status = models.CharField("Статус", max_length=16, choices=Status.choices, default=Status.OPEN)
+    fault_side = models.CharField(
+        "Вина", max_length=16, choices=DowntimeEvent.FaultSide.choices, default=DowntimeEvent.FaultSide.IT
+    )
+    fault_category = models.ForeignKey(
+        ItFaultCategory,
+        on_delete=models.PROTECT,
+        related_name="cases",
+        verbose_name="Категория вины",
+        null=True,
+        blank=True,
+    )
+    fault_subcategory = models.ForeignKey(
+        ItFaultSubcategory,
+        on_delete=models.PROTECT,
+        related_name="cases",
+        verbose_name="Подкатегория вины",
+        null=True,
+        blank=True,
+    )
+
+    # Границы и длительность — считаются из входящих событий (см. services.recalc_case).
+    started_at = models.DateTimeField("Начало", null=True, blank=True, editable=False)
+    ended_at = models.DateTimeField("Окончание", null=True, blank=True, editable=False)
+    duration_min = models.PositiveIntegerField("Длительность, мин", default=0, editable=False)
+
+    note = models.TextField("Описание", blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="cases_created",
+        verbose_name="Создал",
+        null=True,
+        blank=True,
+    )
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="cases_updated",
+        verbose_name="Изменил",
+        null=True,
+        blank=True,
+    )
+
+    class Meta:
+        verbose_name = "Кейс"
+        verbose_name_plural = "Кейсы"
+        ordering = ["-started_at"]
+        indexes = [
+            models.Index(fields=["started_at"]),
+            models.Index(fields=["status"]),
+        ]
+
+    def save(self, *args, **kwargs):
+        """Автоматически присваиваем номер кейса вида «К-2026-0001»."""
+        if not self.number:
+            year = timezone.now().year
+            prefix = f"К-{year}-"
+            last = DowntimeCase.objects.filter(number__startswith=prefix).order_by("-number").first()
+            seq = int(last.number.rsplit("-", 1)[-1]) + 1 if last else 1
+            self.number = f"{prefix}{seq:04d}"
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.number} · {self.title}"
+
+
+class DowntimeCaseLog(TimeStampedModel):
+    """Запись в журнале кейса: кто и что изменил."""
+
+    class Action(models.TextChoices):
+        CREATED = "created", "Создание"
+        UPDATED = "updated", "Изменение"
+        STATUS = "status", "Смена статуса"
+        MERGED = "merged", "Объединение"
+        UNMERGED = "unmerged", "Разъединение"
+
+    case = models.ForeignKey(
+        DowntimeCase, on_delete=models.CASCADE, related_name="logs", verbose_name="Кейс"
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="downtime_case_logs",
+        verbose_name="Кто",
+        null=True,
+        blank=True,
+    )
+    action = models.CharField("Действие", max_length=16, choices=Action.choices)
+    changes = models.JSONField("Что изменилось", default=dict, blank=True)
+    comment = models.CharField("Комментарий", max_length=255, blank=True)
+
+    class Meta:
+        verbose_name = "Запись журнала кейса"
+        verbose_name_plural = "Журнал кейсов"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.get_action_display()} · {self.case_id} · {self.created_at:%d.%m.%Y %H:%M}"
