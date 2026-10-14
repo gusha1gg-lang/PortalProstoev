@@ -1,0 +1,13 @@
+# Доп. зависимости для LIVE-режима (прод в корпоративной сети).
+# На разработке не нужны: адаптеры Oracle и OMNITRACKER подключают их лениво,
+# в mock-режиме проект работает без этих пакетов.
+#
+# Установка на проде:  pip install -r requirements-live.txt
+#
+# Примечание: python-oracledb пока не собирается на Python 3.14 (dev). На проде
+# используется Python 3.12, где пакет ставится без проблем.
+
+-r requirements.txt
+
+python-oracledb>=2.0      # драйвер Oracle (источник простоев)
+requests>=2.31            # HTTP-запросы к OMNITRACKER (ITIL-тикеты)

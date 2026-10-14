@@ -28,6 +28,7 @@
 - **Источник простоев:** Oracle DB (второй уровень), read-only через `python-oracledb`.
 - **ITIL-тикеты:** OMNITRACKER (связь many-to-many с инцидентами портала).
 - **Тесты:** pytest + pytest-django.
+- **Интеграции — только за адаптерами** `mock`/`live` (`apps/integrations/*`); выбор режима — через `.env` (`INTEGRATION_MODE`). Доменная логика не знает про режим. Драйвер Oracle и `requests` подключаются лениво и нужны только в live-режиме (`requirements-live.txt`).
 
 ## Среды разработки и прода (важно)
 - **Сейчас:** разработка на домашнем Windows-ПК в WSL без доступа к домену, Oracle DB и OMNITRACKER. Код обязан собираться и работать без этих ресурсов.

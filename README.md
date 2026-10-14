@@ -47,7 +47,7 @@ PortalProstoev/
 │  ├─ catalog/          # справочники (предприятия, цеха, участки, агрегаты, категории вины)
 │  ├─ downtimes/        # простои + кейсы (объединение) + журналы изменений
 │  ├─ sla/              # потери, доступность, MTTR/MTBF и договоры SLA
-│  ├─ integrations/     # Oracle, OMNITRACKER (mock / live)
+│  ├─ integrations/     # Oracle, OMNITRACKER (mock / live), импорт простоев
 │  └─ reports/          # дашборды и отчёты
 ├─ docs/                # документация рядом с кодом
 ├─ tests/
@@ -75,6 +75,8 @@ docker compose up -d
 ./.venv/bin/python manage.py seed_catalog       # справочники
 ./.venv/bin/python manage.py seed_downtimes     # демо-простои
 ./.venv/bin/python manage.py seed_sla           # демо-договоры SLA
+# (необязательно) импорт простоев из источника в mock-режиме
+./.venv/bin/python manage.py import_oracle
 
 # 6. Запуск
 ./.venv/bin/python manage.py runserver
@@ -97,6 +99,7 @@ docker compose up -d
 - `docs/модуль-catalog.md` — справочники и роли (Этап 2).
 - `docs/модуль-downtimes.md` — простои, кейсы и журналы изменений (этапы 3–4).
 - `docs/модуль-sla.md` — потери, доступность, MTTR/MTBF и штрафы SLA (Этап 5).
+- `docs/модуль-integrations.md` — импорт из Oracle и тикеты OMNITRACKER, mock/live (Этап 6).
 - `docs/источник-данных-oracle.md` — структура источника простоев.
 - `docs/план.md` — план разработки по этапам.
 
