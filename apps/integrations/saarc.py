@@ -1,32 +1,37 @@
 """
-Адаптер источника простоев.
+Адаптер источника простоев — СААРЦ.
 
-Данные о простоях живут в Oracle DB (второй уровень). Мы их только ЧИТАЕМ (SELECT),
-ничего не меняем.
+СААРЦ — «Система автоматизированного анализа работы цеха», собственная разработка ОМК.
+Она собирает данные с производственного оборудования, в том числе простои. Мы их только
+ЧИТАЕМ (SELECT), ничего не меняем: портал не «собирает» простои сам, а фильтрует их из
+СААРЦ и приводит к удобному для ИТ виду.
 
 Как это устроено:
-    BaseOracleSource  — общий «портрет» источника (что умеет).
-    MockOracleSource  — заглушка для разработки (встроенные строки-примеры).
-    LiveOracleSource  — реальный Oracle (драйвер python-oracledb подключается лениво).
+    BaseSaarcSource  — общий «портрет» источника (что умеет).
+    MockSaarcSource  — заглушка для разработки (встроенные строки-примеры).
+    LiveSaarcSource  — реальная база СААРЦ (драйвер подключается лениво).
 
 Выбор реализации — в factory.py по флагу INTEGRATION_MODE из .env.
+
+СУБД СААРЦ пока уточняется (question.md, В46). Сейчас код рассчитан на Oracle и использует
+драйвер python-oracledb; при другой СУБД меняется только LiveSaarcSource.
 """
 from dataclasses import dataclass
 from datetime import datetime
 
 from django.conf import settings
 
-# Ответственная служба «наше» — простои по вине ИТ-компании (прежнее название ОМК-ИТ).
+# Ответственная служба «наша» — простои по вине ИТ-компании (прежнее название ОМК-ИТ).
 DIT_SERVICE = "ДИТ"
 
 
-class OracleSourceError(RuntimeError):
-    """Понятная ошибка при проблемах с реальным источником Oracle."""
+class SaarcSourceError(RuntimeError):
+    """Понятная ошибка при проблемах с реальным источником СААРЦ."""
 
 
 @dataclass
 class SourceRow:
-    """Одна строка источника в том виде, как её отдаёт Oracle (русские колонки)."""
+    """Одна строка источника в том виде, как её отдаёт СААРЦ (русские колонки)."""
 
     data: dict
 
@@ -35,7 +40,7 @@ class SourceRow:
         return default if value is None else value
 
 
-class BaseOracleSource:
+class BaseSaarcSource:
     """Общий интерфейс источника простоев."""
 
     def fetch_rows(self, since=None, until=None) -> list[SourceRow]:
@@ -43,7 +48,7 @@ class BaseOracleSource:
         raise NotImplementedError
 
 
-# --- Мок-данные (для разработки без Oracle) ---
+# --- Мок-данные (для разработки без СААРЦ) ---
 # Специально в формате источника: русские колонки, длительность текстом, есть дубли,
 # строка чужой службы и строка с незнакомым цехом — чтобы проверить фильтр и отчёт.
 MOCK_ROWS = [
@@ -112,8 +117,8 @@ MOCK_ROWS = [
 ]
 
 
-class MockOracleSource(BaseOracleSource):
-    """Заглушка: отдаёт встроенные строки. Работает без Oracle и без драйвера."""
+class MockSaarcSource(BaseSaarcSource):
+    """Заглушка: отдаёт встроенные строки. Работает без СААРЦ и без драйвера."""
 
     def fetch_rows(self, since=None, until=None) -> list[SourceRow]:
         rows = [SourceRow(dict(row)) for row in MOCK_ROWS]
@@ -122,22 +127,22 @@ class MockOracleSource(BaseOracleSource):
         return rows
 
 
-class LiveOracleSource(BaseOracleSource):
-    """Реальный Oracle. Драйвер подключается только при вызове (лениво)."""
+class LiveSaarcSource(BaseSaarcSource):
+    """Реальная база СААРЦ. Драйвер подключается только при вызове (лениво)."""
 
     def fetch_rows(self, since=None, until=None) -> list[SourceRow]:
         try:
             import oracledb  # noqa: F401  (импорт внутри метода — чтобы mock работал без драйвера)
         except ImportError as exc:
-            raise OracleSourceError(
+            raise SaarcSourceError(
                 "Не установлен драйвер python-oracledb (нужен только для live-режима). "
                 "Установите: pip install python-oracledb"
             ) from exc
 
-        if not settings.ORACLE_USER or not settings.ORACLE_DSN:
-            raise OracleSourceError("Не заданы ORACLE_USER / ORACLE_DSN в .env (нужны для live-режима).")
+        if not settings.SAARC_USER or not settings.SAARC_DSN:
+            raise SaarcSourceError("Не заданы SAARC_USER / SAARC_DSN в .env (нужны для live-режима).")
 
-        table = settings.ORACLE_DOWNTIME_TABLE
+        table = settings.SAARC_DOWNTIME_TABLE
         sql = (
             "SELECT НАЧАЛО, КОНЕЦ, ДЛИТЕЛЬНОСТЬ, ПРИЧИНА, ПРИМЕЧАНИЕ, АГГРЕГАТ, УЧАСТОК, ФИО, СЛУЖБА, ЦЕХ "
             f"FROM {table} WHERE 1=1"
@@ -153,15 +158,15 @@ class LiveOracleSource(BaseOracleSource):
         columns = ["НАЧАЛО", "КОНЕЦ", "ДЛИТЕЛЬНОСТЬ", "ПРИЧИНА", "ПРИМЕЧАНИЕ", "АГГРЕГАТ", "УЧАСТОК", "ФИО", "СЛУЖБА", "ЦЕХ"]
         try:
             with oracledb.connect(
-                user=settings.ORACLE_USER,
-                password=settings.ORACLE_PASSWORD,
-                dsn=settings.ORACLE_DSN,
+                user=settings.SAARC_USER,
+                password=settings.SAARC_PASSWORD,
+                dsn=settings.SAARC_DSN,
             ) as connection:
                 with connection.cursor() as cursor:
                     cursor.execute(sql, params)
                     return [SourceRow(dict(zip(columns, raw))) for raw in cursor.fetchall()]
         except Exception as exc:  # noqa: BLE001 — показываем понятную ошибку наверх
-            raise OracleSourceError(f"Не удалось прочитать данные из Oracle: {exc}") from exc
+            raise SaarcSourceError(f"Не удалось прочитать данные из СААРЦ: {exc}") from exc
 
 
 def _in_period(text, since, until) -> bool:

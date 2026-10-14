@@ -6,7 +6,7 @@ from apps.downtimes.models import DowntimeEvent
 
 from .models import TicketLink
 from .omnitracker import MockOmniTracker, Ticket
-from .oracle import MOCK_ROWS, MockOracleSource, SourceRow
+from .saarc import MOCK_ROWS, MockSaarcSource, SourceRow
 from .services import (
     fetch_tickets,
     import_downtimes,
@@ -53,31 +53,31 @@ class RowHelpersTests(TestCase):
 
 class ImportTests(ImportTestBase):
     def test_import_creates_ours_and_skips_others(self):
-        report = import_downtimes(source=MockOracleSource())
+        report = import_downtimes(source=MockSaarcSource())
         # 3 строки ДИТ с известными справочниками, 1 чужая служба, 1 незнакомый цех
         self.assertEqual(report.total, 5)
         self.assertEqual(report.created, 3)
         self.assertEqual(report.filtered_out, 1)
         self.assertEqual(report.skipped_missing, 1)
-        self.assertEqual(DowntimeEvent.objects.filter(source=DowntimeEvent.Source.ORACLE).count(), 3)
+        self.assertEqual(DowntimeEvent.objects.filter(source=DowntimeEvent.Source.SAARC).count(), 3)
 
     def test_import_is_idempotent(self):
-        import_downtimes(source=MockOracleSource())
-        second = import_downtimes(source=MockOracleSource())
+        import_downtimes(source=MockSaarcSource())
+        second = import_downtimes(source=MockSaarcSource())
         self.assertEqual(second.created, 0)
         self.assertEqual(second.skipped_existing, 3)
-        self.assertEqual(DowntimeEvent.objects.filter(source=DowntimeEvent.Source.ORACLE).count(), 3)
+        self.assertEqual(DowntimeEvent.objects.filter(source=DowntimeEvent.Source.SAARC).count(), 3)
 
     def test_imported_event_is_it_and_new(self):
-        import_downtimes(source=MockOracleSource())
-        event = DowntimeEvent.objects.filter(source=DowntimeEvent.Source.ORACLE).first()
+        import_downtimes(source=MockSaarcSource())
+        event = DowntimeEvent.objects.filter(source=DowntimeEvent.Source.SAARC).first()
         self.assertEqual(event.fault_side, DowntimeEvent.FaultSide.IT)
         self.assertEqual(event.status, DowntimeEvent.Status.NEW)
         self.assertEqual(event.service, "ДИТ")
         self.assertIsNotNone(event.section)
 
     def test_problem_row_is_reported(self):
-        report = import_downtimes(source=MockOracleSource())
+        report = import_downtimes(source=MockSaarcSource())
         text = report.as_text()
         self.assertIn("НЕИЗВЕСТНЫЙ ЦЕХ", "\n".join(report.problems))
         self.assertIn("создано", text)

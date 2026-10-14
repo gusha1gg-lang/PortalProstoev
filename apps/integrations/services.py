@@ -17,9 +17,9 @@ from apps.catalog.models import Section, Unit, Workshop
 from apps.downtimes.models import DowntimeEvent
 from apps.downtimes.services import save_with_audit
 
-from .factory import get_oracle_source, get_omnitracker
+from .factory import get_saarc_source, get_omnitracker
 from .models import TicketLink
-from .oracle import DIT_SERVICE
+from .saarc import DIT_SERVICE
 from .omnitracker import Ticket
 
 # Колонки, из которых складывается отпечаток строки (для идемпотентности).
@@ -168,7 +168,7 @@ def import_downtimes(since=None, until=None, create_missing=False, update=False,
     При notify=True о каждом новом простое рассылается уведомление (этап 8). Для массового
     исторического импорта уведомления можно отключить (`notify=False` / ключ `--no-notify`).
     """
-    source = source or get_oracle_source()
+    source = source or get_saarc_source()
     rows = source.fetch_rows(since=since, until=until)
     report = ImportReport(total=len(rows))
 
@@ -185,7 +185,7 @@ def import_downtimes(since=None, until=None, create_missing=False, update=False,
 
         external_id = row_fingerprint(row)
         existing = DowntimeEvent.objects.filter(
-            source=DowntimeEvent.Source.ORACLE, external_id=external_id
+            source=DowntimeEvent.Source.SAARC, external_id=external_id
         ).first()
 
         if existing is not None:
@@ -199,13 +199,13 @@ def import_downtimes(since=None, until=None, create_missing=False, update=False,
             continue
 
         event = DowntimeEvent(
-            source=DowntimeEvent.Source.ORACLE,
+            source=DowntimeEvent.Source.SAARC,
             external_id=external_id,
             status=DowntimeEvent.Status.NEW,
             raw=dict(row.data),
             **data,
         )
-        save_with_audit(event, user=None, comment="Импорт из Oracle")
+        save_with_audit(event, user=None, comment="Импорт из СААРЦ")
         report.created += 1
         if notify:
             _notify_new_incident(event)
@@ -236,7 +236,7 @@ def _apply_update(event, data) -> bool:
         event.recorded_by_name = data["recorded_by_name"]
         changed = True
     if changed:
-        save_with_audit(event, user=None, comment="Обновление из Oracle")
+        save_with_audit(event, user=None, comment="Обновление из СААРЦ")
     return changed
 
 

@@ -125,12 +125,13 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 INTEGRATION_MODE = os.getenv("INTEGRATION_MODE", "mock")  # mock | live
 AUTH_MODE = os.getenv("AUTH_MODE", "dev")                 # dev  | adfs
 
-# --- Oracle (источник простоев) — только для INTEGRATION_MODE=live ---
-ORACLE_USER = os.getenv("ORACLE_USER", "")
-ORACLE_PASSWORD = os.getenv("ORACLE_PASSWORD", "")
-ORACLE_DSN = os.getenv("ORACLE_DSN", "")
-# Таблица/представление с простоями. Уточняется после выдачи доступа (question.md, В17).
-ORACLE_DOWNTIME_TABLE = os.getenv("ORACLE_DOWNTIME_TABLE", "DOWNTIMES")
+# --- СААРЦ (источник простоев) — только для INTEGRATION_MODE=live ---
+# Портал не собирает простои сам, а читает и фильтрует их из базы СААРЦ (только SELECT).
+SAARC_USER = os.getenv("SAARC_USER", "")
+SAARC_PASSWORD = os.getenv("SAARC_PASSWORD", "")
+SAARC_DSN = os.getenv("SAARC_DSN", "")
+# Таблица/представление с простоями. Уточняется после выдачи доступа (question.md, В17, В46).
+SAARC_DOWNTIME_TABLE = os.getenv("SAARC_DOWNTIME_TABLE", "DOWNTIMES")
 
 # --- OMNITRACKER (ITIL-тикеты) — только для INTEGRATION_MODE=live ---
 OMNITRACKER_BASE_URL = os.getenv("OMNITRACKER_BASE_URL", "")

@@ -1,5 +1,5 @@
 # Доп. зависимости для LIVE-режима (прод в корпоративной сети).
-# На разработке не нужны: адаптеры Oracle и OMNITRACKER подключают их лениво,
+# На разработке не нужны: адаптеры СААРЦ и OMNITRACKER подключают их лениво,
 # в mock-режиме проект работает без этих пакетов.
 #
 # Установка на проде:  pip install -r requirements-live.txt
@@ -9,6 +9,6 @@
 
 -r requirements.txt
 
-python-oracledb>=2.0      # драйвер Oracle (источник простоев)
+python-oracledb>=2.0      # драйвер базы СААРЦ (источник простоев; СУБД уточняется, В46)
 requests>=2.31            # HTTP-запросы к OMNITRACKER (ITIL-тикеты)
 django-auth-adfs>=1.15    # корпоративный вход ADFS (AUTH_MODE=adfs)

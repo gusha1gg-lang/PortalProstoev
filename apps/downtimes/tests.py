@@ -116,14 +116,14 @@ class EventSaveTests(DowntimeTestBase):
 
     def test_duplicate_external_id_is_rejected(self):
         self.make_event("2026-10-01 10:00", "2026-10-01 10:10")
-        DowntimeEvent.objects.filter(pk__isnull=False).update(external_id="same", source=DowntimeEvent.Source.ORACLE)
+        DowntimeEvent.objects.filter(pk__isnull=False).update(external_id="same", source=DowntimeEvent.Source.SAARC)
         with self.assertRaises(IntegrityError), transaction.atomic():
             DowntimeEvent.objects.create(
                 started_at=dt("2026-10-01 11:00"),
                 ended_at=dt("2026-10-01 11:10"),
                 workshop=self.workshop,
                 external_id="same",
-                source=DowntimeEvent.Source.ORACLE,
+                source=DowntimeEvent.Source.SAARC,
             )
 
     def test_ended_before_started_is_rejected(self):

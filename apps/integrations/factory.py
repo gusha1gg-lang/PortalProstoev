@@ -3,7 +3,7 @@
 
 Режим задаётся в .env переменной INTEGRATION_MODE:
     mock — разработка без доступа к корпоративным системам (встроенные данные);
-    live — прод в доменной сети (реальные Oracle и OMNITRACKER).
+    live — прод в доменной сети (реальные СААРЦ и OMNITRACKER).
 
 Доменная логика (импорт, расчёты) про этот выбор ничего не знает — она работает
 с общим интерфейсом адаптера.
@@ -11,7 +11,7 @@
 from django.conf import settings
 
 from .omnitracker import BaseOmniTracker, LiveOmniTracker, MockOmniTracker
-from .oracle import BaseOracleSource, LiveOracleSource, MockOracleSource
+from .saarc import BaseSaarcSource, LiveSaarcSource, MockSaarcSource
 
 
 def is_mock() -> bool:
@@ -19,9 +19,9 @@ def is_mock() -> bool:
     return getattr(settings, "INTEGRATION_MODE", "mock") != "live"
 
 
-def get_oracle_source() -> BaseOracleSource:
-    """Возвращает источник простоев (Oracle): mock или live."""
-    return MockOracleSource() if is_mock() else LiveOracleSource()
+def get_saarc_source() -> BaseSaarcSource:
+    """Возвращает источник простоев (СААРЦ): mock или live."""
+    return MockSaarcSource() if is_mock() else LiveSaarcSource()
 
 
 def get_omnitracker() -> BaseOmniTracker:

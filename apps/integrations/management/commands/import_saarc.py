@@ -1,11 +1,14 @@
 """
-Импорт простоев из источника (Oracle) в портал.
+Импорт простоев из источника (СААРЦ) в портал.
+
+Портал не «собирает» простои сам — он фильтрует их из СААРЦ (оставляет только вину ИТ)
+и приводит к удобному для ИТ виду.
 
 Запуск:
-    python manage.py import_oracle                       # за весь доступный период (мок)
-    python manage.py import_oracle --since 2026-09-01 --until 2026-10-01
-    python manage.py import_oracle --create-missing      # создавать недостающие участки/агрегаты
-    python manage.py import_oracle --update              # обновлять уже загруженные строки
+    python manage.py import_saarc                        # за весь доступный период (мок)
+    python manage.py import_saarc --since 2026-09-01 --until 2026-10-01
+    python manage.py import_saarc --create-missing       # создавать недостающие участки/агрегаты
+    python manage.py import_saarc --update               # обновлять уже загруженные строки
 
 Идемпотентно: повторный запуск не создаёт дублей.
 """
@@ -14,11 +17,11 @@ from datetime import datetime
 from django.core.management.base import BaseCommand, CommandError
 
 from apps.integrations.services import day_start, import_downtimes
-from apps.integrations.oracle import OracleSourceError
+from apps.integrations.saarc import SaarcSourceError
 
 
 class Command(BaseCommand):
-    help = "Импортирует простои из источника Oracle (в mock-режиме — из встроенных данных)."
+    help = "Импортирует простои из источника СААРЦ (в mock-режиме — из встроенных данных)."
 
     def add_arguments(self, parser):
         parser.add_argument("--since", help="Начало периода, ГГГГ-ММ-ДД")
@@ -52,7 +55,7 @@ class Command(BaseCommand):
                 update=options["update"],
                 notify=options["notify"],
             )
-        except OracleSourceError as exc:
+        except SaarcSourceError as exc:
             raise CommandError(str(exc)) from exc
 
         self.stdout.write(report.as_text())

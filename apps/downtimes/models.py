@@ -48,7 +48,7 @@ class DowntimeEvent(TimeStampedModel):
 
     class Source(models.TextChoices):
         MANUAL = "manual", "Вручную"
-        ORACLE = "oracle", "Oracle"
+        SAARC = "saarc", "СААРЦ"
         FILE = "file", "Файл"
 
     # --- Когда ---
