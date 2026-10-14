@@ -1,6 +1,9 @@
 """
 Справочники портала: производственная структура, категории вины ИТ, ставки потерь.
 
+Названия соответствуют реальным терминам предприятия:
+    Цех (Workshop) -> Участок (Section) -> Агрегат (Unit).
+
 Здесь только структура данных (модели = таблицы в БД). Логика расчётов — в модуле sla.
 """
 from django.db import models
@@ -32,54 +35,54 @@ class Workshop(TimeStampedModel):
         return f"{self.name} ({self.code})"
 
 
-class ProductionLine(TimeStampedModel):
-    """Производственная линия внутри цеха."""
+class Section(TimeStampedModel):
+    """Участок внутри цеха (раньше назывался «Линия»)."""
 
     workshop = models.ForeignKey(
-        Workshop, on_delete=models.PROTECT, related_name="lines", verbose_name="Цех"
+        Workshop, on_delete=models.PROTECT, related_name="sections", verbose_name="Цех"
     )
     code = models.CharField("Код", max_length=32)
     name = models.CharField("Название", max_length=255)
-    is_active = models.BooleanField("Активна", default=True)
+    is_active = models.BooleanField("Активен", default=True)
 
     class Meta:
-        verbose_name = "Линия"
-        verbose_name_plural = "Линии"
+        verbose_name = "Участок"
+        verbose_name_plural = "Участки"
         ordering = ["workshop__name", "name"]
-        # Код линии уникален в пределах цеха.
+        # Код участка уникален в пределах цеха.
         constraints = [
-            models.UniqueConstraint(fields=["workshop", "code"], name="uniq_line_code_per_workshop")
+            models.UniqueConstraint(fields=["workshop", "code"], name="uniq_section_code_per_workshop")
         ]
 
     def __str__(self):
         return f"{self.workshop.code} / {self.name}"
 
 
-class Equipment(TimeStampedModel):
-    """Оборудование (агрегат) на линии."""
+class Unit(TimeStampedModel):
+    """Агрегат (единица оборудования) на участке."""
 
     class Criticality(models.TextChoices):
-        CRITICAL = "critical", "Особо важное"
+        CRITICAL = "critical", "Особо важный"
         HIGH = "high", "Высокая"
         MEDIUM = "medium", "Средняя"
         LOW = "low", "Низкая"
 
-    line = models.ForeignKey(
-        ProductionLine, on_delete=models.PROTECT, related_name="equipment", verbose_name="Линия"
+    section = models.ForeignKey(
+        Section, on_delete=models.PROTECT, related_name="units", verbose_name="Участок"
     )
     code = models.CharField("Код", max_length=32)
     name = models.CharField("Название", max_length=255)
     criticality = models.CharField(
         "Критичность", max_length=16, choices=Criticality.choices, default=Criticality.MEDIUM
     )
-    is_active = models.BooleanField("Активно", default=True)
+    is_active = models.BooleanField("Активен", default=True)
 
     class Meta:
-        verbose_name = "Оборудование"
-        verbose_name_plural = "Оборудование"
-        ordering = ["line__name", "name"]
+        verbose_name = "Агрегат"
+        verbose_name_plural = "Агрегаты"
+        ordering = ["section__name", "name"]
         constraints = [
-            models.UniqueConstraint(fields=["line", "code"], name="uniq_equipment_code_per_line")
+            models.UniqueConstraint(fields=["section", "code"], name="uniq_unit_code_per_section")
         ]
 
     def __str__(self):
@@ -127,12 +130,12 @@ class ItFaultSubcategory(TimeStampedModel):
 
 class LossRate(TimeStampedModel):
     """
-    Ставка потерь по линии. Версионируется по датам: для события берётся
+    Ставка потерь по участку. Версионируется по датам: для события берётся
     ставка, действовавшая на дату простоя.
     """
 
-    line = models.ForeignKey(
-        ProductionLine, on_delete=models.PROTECT, related_name="loss_rates", verbose_name="Линия"
+    section = models.ForeignKey(
+        Section, on_delete=models.PROTECT, related_name="loss_rates", verbose_name="Участок"
     )
     cost_per_hour = models.DecimalField("Потери за час, ₽", max_digits=14, decimal_places=2)
     ton_margin = models.DecimalField("Маржа за тонну, ₽", max_digits=14, decimal_places=2, default=0)
@@ -143,7 +146,7 @@ class LossRate(TimeStampedModel):
     class Meta:
         verbose_name = "Ставка потерь"
         verbose_name_plural = "Ставки потерь"
-        ordering = ["line__name", "-valid_from"]
+        ordering = ["section__name", "-valid_from"]
         constraints = [
             # Дата начала не может быть позже даты окончания.
             models.CheckConstraint(
@@ -156,4 +159,4 @@ class LossRate(TimeStampedModel):
         period = f"с {self.valid_from}"
         if self.valid_to:
             period += f" по {self.valid_to}"
-        return f"{self.line.name}: {self.cost_per_hour} ₽/ч ({period})"
+        return f"{self.section.name}: {self.cost_per_hour} ₽/ч ({period})"

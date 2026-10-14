@@ -2,17 +2,17 @@
 from django.contrib import admin
 
 from .models import (
-    Equipment,
     ItFaultCategory,
     ItFaultSubcategory,
     LossRate,
-    ProductionLine,
+    Section,
+    Unit,
     Workshop,
 )
 
 
-class ProductionLineInline(admin.TabularInline):
-    model = ProductionLine
+class SectionInline(admin.TabularInline):
+    model = Section
     extra = 0
 
 
@@ -21,26 +21,26 @@ class WorkshopAdmin(admin.ModelAdmin):
     list_display = ("name", "code", "is_active")
     list_filter = ("is_active",)
     search_fields = ("name", "code")
-    inlines = [ProductionLineInline]
+    inlines = [SectionInline]
 
 
-class EquipmentInline(admin.TabularInline):
-    model = Equipment
+class UnitInline(admin.TabularInline):
+    model = Unit
     extra = 0
 
 
-@admin.register(ProductionLine)
-class ProductionLineAdmin(admin.ModelAdmin):
+@admin.register(Section)
+class SectionAdmin(admin.ModelAdmin):
     list_display = ("name", "code", "workshop", "is_active")
     list_filter = ("workshop", "is_active")
     search_fields = ("name", "code")
-    inlines = [EquipmentInline]
+    inlines = [UnitInline]
 
 
-@admin.register(Equipment)
-class EquipmentAdmin(admin.ModelAdmin):
-    list_display = ("name", "code", "line", "criticality", "is_active")
-    list_filter = ("criticality", "line__workshop", "is_active")
+@admin.register(Unit)
+class UnitAdmin(admin.ModelAdmin):
+    list_display = ("name", "code", "section", "criticality", "is_active")
+    list_filter = ("criticality", "section__workshop", "is_active")
     search_fields = ("name", "code")
 
 
@@ -66,7 +66,7 @@ class ItFaultSubcategoryAdmin(admin.ModelAdmin):
 
 @admin.register(LossRate)
 class LossRateAdmin(admin.ModelAdmin):
-    list_display = ("line", "cost_per_hour", "ton_margin", "valid_from", "valid_to")
-    list_filter = ("line__workshop", "line")
-    search_fields = ("line__name",)
+    list_display = ("section", "cost_per_hour", "ton_margin", "valid_from", "valid_to")
+    list_filter = ("section__workshop", "section")
+    search_fields = ("section__name",)
     date_hierarchy = "valid_from"

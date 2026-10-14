@@ -30,6 +30,9 @@ htmlcov/
 .env.local
 .env.*.local
 
+# Входящие файлы (скриншоты, выгрузки) — не коммитим в репозиторий
+inbox/
+
 # Редакторы и ОС
 .vscode/*
 !.vscode/extensions.json

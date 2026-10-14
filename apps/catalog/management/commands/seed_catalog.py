@@ -8,31 +8,51 @@ from decimal import Decimal
 from django.core.management.base import BaseCommand
 
 from apps.catalog.models import (
-    Equipment,
     ItFaultCategory,
     ItFaultSubcategory,
     LossRate,
-    ProductionLine,
+    Section,
+    Unit,
     Workshop,
 )
 
 
 class Command(BaseCommand):
-    help = "Создаёт тестовые справочники (цеха, линии, оборудование, категории вины, ставки)."
+    help = "Создаёт тестовые справочники (цеха, участки, агрегаты, категории вины, ставки)."
 
     def handle(self, *args, **options):
         workshops = [
-            ("C1", "Цех №1 — прокат"),
+            ("TESC4", "ТЭСЦ-4"),
             ("C2", "Цех №2 — плавка"),
         ]
-        lines_by_workshop = {
-            "C1": [("L1", "Линия проката №1"), ("L2", "Линия проката №2")],
-            "C2": [("L1", "Линия плавки №1")],
+        # Цех -> участки
+        sections_by_workshop = {
+            "TESC4": [
+                ("U-Otd", "Участок отделки труб 1020"),
+                ("U-Svar", "Участок сварки труб 1020"),
+                ("U-Form", "Участок формовки труб 1020"),
+                ("U-Gidro", "Участок ремонта и гидроиспытаний 1020"),
+            ],
+            "C2": [("U-Plav", "Участок плавки")],
         }
-        equipment_by_line = {
-            "C1/L1": [("EQ1", "Стан горячей прокатки", "critical"), ("EQ2", "Моталка", "high")],
-            "C1/L2": [("EQ1", "Стан холодной прокатки", "high")],
-            "C2/L1": [("EQ1", "Печь плавки", "critical")],
+        # Участок -> агрегаты
+        units_by_section = {
+            "TESC4/U-Otd": [
+                ("OPT9", "Площадка №9 окончательной приемки — ОПТ №9", "high"),
+                ("AUZK31", "Участок АУЗК-31 — АУЗК-31", "medium"),
+            ],
+            "TESC4/U-Svar": [
+                ("SSS3", "Ремонтная площадка №3 — ССС-3", "high"),
+            ],
+            "TESC4/U-Form": [
+                ("KLEIM", "Участок клеймовки и накопителя — Участок клеймения труб", "high"),
+            ],
+            "TESC4/U-Gidro": [
+                ("P9046-2", "Участок гидропресса №2 — П9046-2", "critical"),
+            ],
+            "C2/U-Plav": [
+                ("PECH1", "Печь плавки", "critical"),
+            ],
         }
         categories = [
             ("NET", "Сеть"),
@@ -52,29 +72,28 @@ class Command(BaseCommand):
             "SEC": [("SEC-AT", "Инцидент ИБ")],
             "HUM": [("HUM-ER", "Ошибка оператора")],
         }
-        # Ставка потерь: линия -> (₽/час, маржа за тонну)
+        # Ставка потерь: участок -> (₽/час, маржа за тонну)
         rates = {
-            "C1/L1": (Decimal("120000.00"), Decimal("3500.00")),
-            "C1/L2": (Decimal("90000.00"), Decimal("2800.00")),
-            "C2/L1": (Decimal("150000.00"), Decimal("4200.00")),
+            "TESC4/U-Otd": (Decimal("120000.00"), Decimal("3500.00")),
+            "TESC4/U-Svar": (Decimal("90000.00"), Decimal("2800.00")),
+            "TESC4/U-Form": (Decimal("120000.00"), Decimal("3500.00")),
+            "TESC4/U-Gidro": (Decimal("150000.00"), Decimal("4200.00")),
         }
 
         for code, name in workshops:
             Workshop.objects.get_or_create(code=code, defaults={"name": name})
 
-        for ws_code, lines in lines_by_workshop.items():
+        for ws_code, sections in sections_by_workshop.items():
             workshop = Workshop.objects.get(code=ws_code)
-            for code, name in lines:
-                ProductionLine.objects.get_or_create(
-                    workshop=workshop, code=code, defaults={"name": name}
-                )
+            for code, name in sections:
+                Section.objects.get_or_create(workshop=workshop, code=code, defaults={"name": name})
 
-        for line_key, items in equipment_by_line.items():
-            ws_code, line_code = line_key.split("/")
-            line = ProductionLine.objects.get(workshop__code=ws_code, code=line_code)
+        for section_key, items in units_by_section.items():
+            ws_code, sec_code = section_key.split("/")
+            section = Section.objects.get(workshop__code=ws_code, code=sec_code)
             for code, name, criticality in items:
-                Equipment.objects.get_or_create(
-                    line=line, code=code, defaults={"name": name, "criticality": criticality}
+                Unit.objects.get_or_create(
+                    section=section, code=code, defaults={"name": name, "criticality": criticality}
                 )
 
         for code, name in categories:
@@ -87,11 +106,11 @@ class Command(BaseCommand):
                     category=category, code=code, defaults={"name": name}
                 )
 
-        for line_key, (cost, ton) in rates.items():
-            ws_code, line_code = line_key.split("/")
-            line = ProductionLine.objects.get(workshop__code=ws_code, code=line_code)
+        for section_key, (cost, ton) in rates.items():
+            ws_code, sec_code = section_key.split("/")
+            section = Section.objects.get(workshop__code=ws_code, code=sec_code)
             LossRate.objects.get_or_create(
-                line=line,
+                section=section,
                 valid_from="2025-01-01",
                 defaults={"cost_per_hour": cost, "ton_margin": ton, "note": "Демо-ставка"},
             )
