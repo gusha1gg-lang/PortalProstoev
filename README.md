@@ -55,12 +55,28 @@ PortalProstoev/
 ```
 
 ## Быстрый старт (разработка в WSL)
-> Заполняется по мере реализации проекта.
+```bash
+# 1. Настройки
+cp .env.example .env
 
-1. Скопировать `.env.example` в `.env`, выставить `INTEGRATION_MODE=mock`, `AUTH_MODE=dev`.
-2. Установить зависимости, поднять локальный PostgreSQL (docker-compose).
-3. Применить миграции и залить seed-данные (справочники, ставки, тестовые простои).
-4. Запустить `python manage.py runserver` и войти через dev-логин.
+# 2. Зависимости
+python3 -m venv .venv
+./.venv/bin/pip install -r requirements.txt
+
+# 3. Локальный PostgreSQL (порт 5433 — 5432 занят другими проектами)
+docker compose up -d
+
+# 4. Структура БД
+./.venv/bin/python manage.py migrate
+
+# 5. Администратор (один раз)
+./.venv/bin/python manage.py createsuperuser
+
+# 6. Запуск
+./.venv/bin/python manage.py runserver
+```
+Открыть: главная — http://127.0.0.1:8000/, админка — http://127.0.0.1:8000/admin/.
+Подробно — в [`docs/каркас.md`](docs/каркас.md).
 
 ## Принципы разработки
 - Мок-режим обязателен: проект собирается и работает без доступа в домен.

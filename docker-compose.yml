@@ -1,0 +1,24 @@
+# Локальная инфраструктура для разработки.
+# Запуск:  docker compose up -d
+services:
+  db:
+    image: postgres:16
+    container_name: portalprostoev-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: portalprostoev
+      POSTGRES_USER: portal
+      POSTGRES_PASSWORD: portal
+    ports:
+      # На хосте 5432 может быть занят другими проектами — используем 5433.
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U portal -d portalprostoev"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:

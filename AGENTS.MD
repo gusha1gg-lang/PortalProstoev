@@ -21,7 +21,7 @@
 - Обновление документации — часть Definition of Done. Документацию коммитить вместе с кодом, а не отдельно.
 
 ## Ключевые технические решения
-- **Стек:** Python 3.12 + Django 5, Django Templates + HTMX, Chart.js. Без React и сборки фронтенда.
+- **Стек:** Python 3.12+ + Django 6.x, Django Templates + HTMX, Chart.js. Без React и сборки фронтенда.
 - **App DB:** PostgreSQL + Django ORM.
 - **Аутентификация:** `django-auth-adfs` (prod), dev-вход (локально). Маппинг групп AD → роли.
 - **Источник простоев:** Oracle DB (второй уровень), read-only через `python-oracledb`.

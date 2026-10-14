@@ -1,0 +1,7 @@
+# Зависимости проекта PortalProstoev
+# Установка:  pip install -r requirements.txt
+
+Django>=6.1,<6.2          # веб-фреймворк
+psycopg[binary]>=3.2      # драйвер PostgreSQL
+python-dotenv>=1.0        # чтение настроек из файла .env
+gunicorn>=23              # сервер для прода (на dev не нужен)
