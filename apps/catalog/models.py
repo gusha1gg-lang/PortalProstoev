@@ -2,8 +2,9 @@
 Справочники портала: производственная структура, категории вины ИТ, ставки потерь.
 
 Названия соответствуют реальным терминам предприятия:
-    Цех (Workshop) -> Участок (Section) -> Агрегат (Unit).
+    Предприятие (Enterprise) -> Цех (Workshop) -> Участок (Section) -> Агрегат (Unit).
 
+Портал обслуживает всю группу ОМК (много заводов, дивизионов и депо по России).
 Здесь только структура данных (модели = таблицы в БД). Логика расчётов — в модуле sla.
 """
 from django.db import models
@@ -19,24 +20,47 @@ class TimeStampedModel(models.Model):
         abstract = True
 
 
-class Workshop(TimeStampedModel):
-    """Цех — верхний уровень производственной структуры."""
+class Enterprise(TimeStampedModel):
+    """Предприятие / завод / дивизион / депо группы ОМК — верхний уровень структуры."""
 
     code = models.CharField("Код", max_length=32, unique=True)
+    name = models.CharField("Название", max_length=255)
+    is_active = models.BooleanField("Активно", default=True)
+
+    class Meta:
+        verbose_name = "Предприятие"
+        verbose_name_plural = "Предприятия"
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+
+class Workshop(TimeStampedModel):
+    """Цех (или объект) внутри предприятия."""
+
+    enterprise = models.ForeignKey(
+        Enterprise, on_delete=models.PROTECT, related_name="workshops", verbose_name="Предприятие"
+    )
+    code = models.CharField("Код", max_length=32)
     name = models.CharField("Название", max_length=255)
     is_active = models.BooleanField("Активен", default=True)
 
     class Meta:
         verbose_name = "Цех"
         verbose_name_plural = "Цеха"
-        ordering = ["name"]
+        ordering = ["enterprise__name", "name"]
+        # Код цеха уникален в пределах предприятия.
+        constraints = [
+            models.UniqueConstraint(fields=["enterprise", "code"], name="uniq_workshop_code_per_enterprise")
+        ]
 
     def __str__(self):
-        return f"{self.name} ({self.code})"
+        return f"{self.enterprise.name} / {self.name}"
 
 
 class Section(TimeStampedModel):
-    """Участок внутри цеха (раньше назывался «Линия»)."""
+    """Участок внутри цеха."""
 
     workshop = models.ForeignKey(
         Workshop, on_delete=models.PROTECT, related_name="sections", verbose_name="Цех"

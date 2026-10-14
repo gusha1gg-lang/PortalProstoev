@@ -44,7 +44,7 @@ PortalProstoev/
 ├─ config/              # настройки (base.py / dev.py / prod.py)
 ├─ apps/
 │  ├─ accounts/         # вход и роли
-│  ├─ catalog/          # справочники (цеха, участки, агрегаты, категории вины)
+│  ├─ catalog/          # справочники (предприятия, цеха, участки, агрегаты, категории вины)
 │  ├─ downtimes/        # простои + конструктор кейсов
 │  ├─ sla/              # потери и SLA
 │  ├─ integrations/     # Oracle, OMNITRACKER (mock / live)
