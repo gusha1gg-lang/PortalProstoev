@@ -158,12 +158,15 @@ def _build_data(row, create_missing):
     return data, []
 
 
-def import_downtimes(since=None, until=None, create_missing=False, update=False, source=None):
+def import_downtimes(since=None, until=None, create_missing=False, update=False, source=None, notify=True):
     """
     Импортирует простои из источника (mock или live) в базу портала.
 
     Идемпотентно: повторный импорт не создаёт дублей (сверка по внешнему ID — отпечатку строки).
     Возвращает ImportReport с итогами.
+
+    При notify=True о каждом новом простое рассылается уведомление (этап 8). Для массового
+    исторического импорта уведомления можно отключить (`notify=False` / ключ `--no-notify`).
     """
     source = source or get_oracle_source()
     rows = source.fetch_rows(since=since, until=until)
@@ -204,8 +207,20 @@ def import_downtimes(since=None, until=None, create_missing=False, update=False,
         )
         save_with_audit(event, user=None, comment="Импорт из Oracle")
         report.created += 1
+        if notify:
+            _notify_new_incident(event)
 
     return report
+
+
+def _notify_new_incident(event):
+    """Уведомляет о новом простое из импорта. Ошибка почты не должна ронять импорт."""
+    try:
+        from apps.notifications.services import notify_new_incident
+
+        notify_new_incident(event)
+    except Exception:  # noqa: BLE001 — почта не должна ломать импорт данных
+        return
 
 
 def _apply_update(event, data) -> bool:

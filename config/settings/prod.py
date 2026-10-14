@@ -5,6 +5,7 @@
 from .base import *  # noqa: F401,F403
 from .base import env_bool, env_list
 
+import os
 
 DEBUG = False
 
@@ -25,3 +26,6 @@ X_FRAME_OPTIONS = "DENY"
 
 # ADFS включается флагом AUTH_MODE=adfs (подключим на этапе 9).
 AUTH_MODE = "adfs"
+
+# На проде письма уходят через реальный почтовый сервер (реквизиты — в .env).
+EMAIL_BACKEND = os.getenv("DJANGO_EMAIL_BACKEND", "django.core.mail.backends.smtp.EmailBackend")

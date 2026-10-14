@@ -48,7 +48,8 @@ PortalProstoev/
 │  ├─ downtimes/        # простои + кейсы (объединение) + журналы изменений
 │  ├─ sla/              # потери, доступность, MTTR/MTBF и договоры SLA
 │  ├─ integrations/     # Oracle, OMNITRACKER (mock / live), импорт простоев
-│  └─ reports/          # дашборды и отчёты
+│  ├─ reports/          # дашборды и отчёты
+│  └─ notifications/    # уведомления и эскалации (email)
 ├─ static/              # стили и локальная библиотека графиков
 ├─ docs/                # документация рядом с кодом
 ├─ tests/
@@ -76,6 +77,7 @@ docker compose up -d
 ./.venv/bin/python manage.py seed_catalog       # справочники
 ./.venv/bin/python manage.py seed_downtimes     # демо-простои
 ./.venv/bin/python manage.py seed_sla           # демо-договоры SLA
+./.venv/bin/python manage.py seed_notifications # демо-правила уведомлений
 # (необязательно) импорт простоев из источника в mock-режиме
 ./.venv/bin/python manage.py import_oracle
 
@@ -102,6 +104,7 @@ SLA-отчёт — http://127.0.0.1:8000/reports/sla/, админка — http:/
 - `docs/модуль-sla.md` — потери, доступность, MTTR/MTBF и штрафы SLA (Этап 5).
 - `docs/модуль-integrations.md` — импорт из Oracle и тикеты OMNITRACKER, mock/live (Этап 6).
 - `docs/модуль-reports.md` — дашборд, KPI, SLA-отчёт и выгрузка (Этап 7).
+- `docs/модуль-notifications.md` — уведомления и эскалации по email (Этап 8).
 - `docs/источник-данных-oracle.md` — структура источника простоев.
 - `docs/план.md` — план разработки по этапам.
 

@@ -33,6 +33,12 @@ class Command(BaseCommand):
             action="store_true",
             help="Обновлять уже загруженные строки (окончание, примечание, ФИО)",
         )
+        parser.add_argument(
+            "--no-notify",
+            dest="notify",
+            action="store_false",
+            help="Не рассылать уведомления о новых простоях (для массового исторического импорта)",
+        )
 
     def handle(self, *args, **options):
         since = _parse_date(options.get("since"))
@@ -44,6 +50,7 @@ class Command(BaseCommand):
                 until=until,
                 create_missing=options["create_missing"],
                 update=options["update"],
+                notify=options["notify"],
             )
         except OracleSourceError as exc:
             raise CommandError(str(exc)) from exc

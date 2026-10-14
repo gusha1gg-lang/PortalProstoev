@@ -46,6 +46,7 @@ INSTALLED_APPS = [
     "apps.sla",
     "apps.integrations",
     "apps.reports",
+    "apps.notifications",
 ]
 
 MIDDLEWARE = [
@@ -127,3 +128,17 @@ ORACLE_DOWNTIME_TABLE = os.getenv("ORACLE_DOWNTIME_TABLE", "DOWNTIMES")
 OMNITRACKER_BASE_URL = os.getenv("OMNITRACKER_BASE_URL", "")
 OMNITRACKER_USER = os.getenv("OMNITRACKER_USER", "")
 OMNITRACKER_PASSWORD = os.getenv("OMNITRACKER_PASSWORD", "")
+
+# --- Почта (уведомления, этап 8) ---
+# В разработке письма печатаются в консоль. На проде backend = SMTP (см. prod.py),
+# реквизиты — из .env (уточняются у коллег из ПИ-ПС, question.md, В22).
+EMAIL_BACKEND = os.getenv("DJANGO_EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend")
+EMAIL_HOST = os.getenv("EMAIL_HOST", "")
+EMAIL_PORT = int(os.getenv("EMAIL_PORT", "25"))
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
+EMAIL_USE_TLS = env_bool("EMAIL_USE_TLS", False)
+EMAIL_USE_SSL = env_bool("EMAIL_USE_SSL", False)
+DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "portal@localhost")
+# Порог предупреждения SLA по умолчанию (используется, если у правила не задан свой).
+NOTIFICATION_SLA_WARNING_PERCENT = int(os.getenv("NOTIFICATION_SLA_WARNING_PERCENT", "80"))

@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+
+{% block title %}Уведомления — PortalProstoev{% endblock %}
+
+{% block content %}
+  <h2>Журнал уведомлений</h2>
+
+  <p>
+    Всего записей: <b>{{ total }}</b> · отправлено: <b>{{ sent }}</b> ·
+    с ошибкой: <b>{{ failed }}</b>.
+    В разработке письма не уходят наружу, а печатаются в консоль сервера —
+    здесь видно, что и кому отправлено.
+  </p>
+  <p class="muted">
+    Правила и получатели настраиваются в
+    <a href="/admin/notifications/notificationrule/">админке</a>. Проверка лимитов SLA и сводка
+    запускаются командами <code>check_escalations</code> и <code>send_digest</code> по расписанию.
+  </p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Дата</th>
+        <th>Событие</th>
+        <th>Тема</th>
+        <th>Получатели</th>
+        <th>Итог</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for log in logs %}
+        <tr>
+          <td>{{ log.created_at|date:"d.m.Y H:i" }}</td>
+          <td>{{ log.get_event_display }}</td>
+          <td>{{ log.subject }}{% if log.error %}<br><small class="muted">{{ log.error }}</small>{% endif %}</td>
+          <td>{{ log.recipients }}</td>
+          <td>{{ log.get_status_display }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="5" class="muted">Пока ничего не отправлялось.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% endblock %}
