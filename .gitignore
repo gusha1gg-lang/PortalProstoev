@@ -1,0 +1,36 @@
+# Зависимости
+node_modules/
+.pnp/
+.pnp.js
+
+# Сборка Next.js
+.next/
+out/
+build/
+dist/
+
+# Переменные окружения (секреты)
+.env
+.env.local
+.env.*.local
+
+# Логи
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Тесты / покрытие
+coverage/
+
+# Редакторы и ОС
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+
+# Прочее
+*.tsbuildinfo
+next-env.d.ts
