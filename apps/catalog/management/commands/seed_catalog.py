@@ -1,7 +1,11 @@
-"""Команда наполнения справочников демонстрационными данными.
+"""Команда наполнения справочников реальными данными (из выгрузки заказчика).
 
 Запуск:  python manage.py seed_catalog
 Идемпотентна: повторный запуск не создаёт дублей.
+
+Опознаём записи по НАЗВАНИЮ (кодов в источнике нет).
+Список предприятий/цехов — получен от заказчика (выпадающий список сайта).
+Детально (участки, агрегаты, ставки) наполняется только ТЭСЦ-4 — по данным выгрузки Excel.
 """
 from decimal import Decimal
 
@@ -17,120 +21,174 @@ from apps.catalog.models import (
     Workshop,
 )
 
+# Предприятия группы ОМК (в том виде, как в источнике).
+ENTERPRISES = [
+    'АО "ВМЗ"',
+    'ВлФ "МК ОМК-ЭкоМеталл"',
+    'ВФ "МК ОМК-ЭкоМеталл"',
+    'МрФ "МК ОМК-ЭкоМеталл"',
+    "Волгореченский завод",
+    'ООО "ВМЗ-Техно"',
+    "Филиал ВМЗ в г. Альметьевск",
+    "Экоплант",
+]
+
+# Предприятие -> список цехов/объектов.
+WORKSHOPS = {
+    'АО "ВМЗ"': [
+        "КПЦ ДЖДК",
+        "ЛПК",
+        "МКС-5000",
+        "Спецтехника",
+        "СПЦ ДЖДК",
+        "ТПЦ",
+        "ТЭСЦ-1",
+        "ТЭСЦ-2",
+        "ТЭСЦ-3",
+        "ТЭСЦ-4",
+        "ТЭСЦ-5",
+        "ЦАПТ",
+        "ЦЗЛ",
+        "ЦПМ",
+    ],
+    'ВлФ "МК ОМК-ЭкоМеталл"': [
+        "Юрьевец",
+        "Юрьев-Польский",
+        "Вязники",
+        "Гусь-Хрустальный",
+        "Киржач",
+        "Ковров",
+        "Кольчугино",
+    ],
+    'ВФ "МК ОМК-ЭкоМеталл"': [
+        "Арзамас ВФ",
+        "Дзержинский ВФ",
+        "Мотмос",
+        "Муром",
+        "УБСС",
+    ],
+    'МрФ "МК ОМК-ЭкоМеталл"': [
+        "Мытищи",
+        "Шереметьево",
+        "Щелмет",
+    ],
+    "Волгореченский завод": [
+        "Волгореченский",
+    ],
+    'ООО "ВМЗ-Техно"': [
+        "КРЦ",
+        "МРЦ",
+    ],
+    "Филиал ВМЗ в г. Альметьевск": [
+        "АТЗ ТЭСЦ-1",
+        "АТЗ ТЭСЦ-2",
+    ],
+    "Экоплант": [
+        "ЭМК",
+    ],
+}
+
+# Детально наполняем только ТЭСЦ-4 (реальные данные из выгрузки).
+# Ключ: (предприятие, цех) -> список участков.
+SECTIONS = {
+    ('АО "ВМЗ"', "ТЭСЦ-4"): [
+        "Участок отделки труб 1020",
+        "Участок сварки труб 1020",
+        "Участок формовки труб 1020",
+        "Участок ремонта и гидроиспытаний 1020",
+    ],
+}
+
+# Ключ: (предприятие, цех, участок) -> список (агрегат, критичность).
+UNITS = {
+    ('АО "ВМЗ"', "ТЭСЦ-4", "Участок отделки труб 1020"): [
+        ("Площадка №9 окончательной приемки — ОПТ №9", "high"),
+        ("Участок АУЗК-31 — АУЗК-31", "medium"),
+    ],
+    ('АО "ВМЗ"', "ТЭСЦ-4", "Участок сварки труб 1020"): [
+        ("Ремонтная площадка №3 — ССС-3", "high"),
+    ],
+    ('АО "ВМЗ"', "ТЭСЦ-4", "Участок формовки труб 1020"): [
+        ("Участок клеймовки и накопителя — Участок клеймения труб", "high"),
+    ],
+    ('АО "ВМЗ"', "ТЭСЦ-4", "Участок ремонта и гидроиспытаний 1020"): [
+        ("Участок гидропресса №2 — П9046-2", "critical"),
+    ],
+}
+
+CATEGORIES = [
+    ("NET", "Сеть"),
+    ("SRV", "Серверы и инфраструктура"),
+    ("APP", "Прикладное ПО"),
+    ("INT", "Интеграции и обмен данными"),
+    ("DBA", "Базы данных"),
+    ("SEC", "Информационная безопасность"),
+    ("HUM", "Человеческий фактор"),
+]
+
+SUBCATEGORIES = {
+    "NET": [("NET-SW", "Сетевой коммутатор"), ("NET-UP", "Обрыв канала")],
+    "SRV": [("SRV-AV", "Отказ сервера"), ("SRV-VM", "Проблема виртуализации")],
+    "APP": [("APP-CR", "Падение приложения"), ("APP-SL", "Деградация скорости")],
+    "INT": [("INT-IF", "Сбой интеграции"), ("INT-DL", "Задержка обмена")],
+    "DBA": [("DBA-DW", "Отказ БД"), ("DBA-LK", "Блокировки")],
+    "SEC": [("SEC-AT", "Инцидент ИБ")],
+    "HUM": [("HUM-ER", "Ошибка оператора")],
+}
+
+# Ключ: (предприятие, цех, участок) -> (₽/час, маржа за тонну).
+RATES = {
+    ('АО "ВМЗ"', "ТЭСЦ-4", "Участок отделки труб 1020"): (Decimal("120000.00"), Decimal("3500.00")),
+    ('АО "ВМЗ"', "ТЭСЦ-4", "Участок сварки труб 1020"): (Decimal("90000.00"), Decimal("2800.00")),
+    ('АО "ВМЗ"', "ТЭСЦ-4", "Участок формовки труб 1020"): (Decimal("120000.00"), Decimal("3500.00")),
+    ('АО "ВМЗ"', "ТЭСЦ-4", "Участок ремонта и гидроиспытаний 1020"): (
+        Decimal("150000.00"),
+        Decimal("4200.00"),
+    ),
+}
+
 
 class Command(BaseCommand):
-    help = "Создаёт тестовые справочники (предприятия, цеха, участки, агрегаты, категории вины, ставки)."
+    help = "Создаёт справочники (предприятия, цеха, участки, агрегаты, категории вины, ставки)."
 
     def handle(self, *args, **options):
-        # Предприятия группы ОМК
-        enterprises = [
-            ("VMZ", "АО «ВМЗ»"),
-            ("ECOM", "МК ОМК-Экометалл"),
-        ]
-        # Предприятие -> цеха/объекты
-        workshops_by_enterprise = {
-            "VMZ": [
-                ("KC", "КЦ"), ("LK", "ЛК"), ("MKS5000", "МКС-5000"),
-                ("SPEC", "СпецТехника"), ("SPKC", "СП КЦ"), ("TP", "ТП"),
-                ("TESC1", "ТЭСЦ-1"), ("TESC2", "ТЭСЦ-2"), ("TESC3", "ТЭСЦ-3"),
-                ("TESC4", "ТЭСЦ-4"), ("TESC5", "ТЭСЦ-5"),
-                ("CANT", "ЦАНТ"), ("CEL", "ЦЭЛ"), ("CPM", "ЦПМ"),
-            ],
-            "ECOM": [
-                ("VYA", "Вязники"), ("GUS", "Гусь-Хрустальный"), ("KIR", "Киржач"),
-                ("KOV", "Ковров"), ("KOL", "Кольчугино"),
-            ],
-        }
-        # Детально наполняем только ТЭСЦ-4 (реальные данные из источника)
-        sections_by_workshop = {
-            "VMZ/TESC4": [
-                ("U-Otd", "Участок отделки труб 1020"),
-                ("U-Svar", "Участок сварки труб 1020"),
-                ("U-Form", "Участок формовки труб 1020"),
-                ("U-Gidro", "Участок ремонта и гидроиспытаний 1020"),
-            ],
-        }
-        units_by_section = {
-            "VMZ/TESC4/U-Otd": [
-                ("OPT9", "Площадка №9 окончательной приемки — ОПТ №9", "high"),
-                ("AUZK31", "Участок АУЗК-31 — АУЗК-31", "medium"),
-            ],
-            "VMZ/TESC4/U-Svar": [
-                ("SSS3", "Ремонтная площадка №3 — ССС-3", "high"),
-            ],
-            "VMZ/TESC4/U-Form": [
-                ("KLEIM", "Участок клеймовки и накопителя — Участок клеймения труб", "high"),
-            ],
-            "VMZ/TESC4/U-Gidro": [
-                ("P9046-2", "Участок гидропресса №2 — П9046-2", "critical"),
-            ],
-        }
-        categories = [
-            ("NET", "Сеть"),
-            ("SRV", "Серверы и инфраструктура"),
-            ("APP", "Прикладное ПО"),
-            ("INT", "Интеграции и обмен данными"),
-            ("DBA", "Базы данных"),
-            ("SEC", "Информационная безопасность"),
-            ("HUM", "Человеческий фактор"),
-        ]
-        subcategories = {
-            "NET": [("NET-SW", "Сетевой коммутатор"), ("NET-UP", "Обрыв канала")],
-            "SRV": [("SRV-AV", "Отказ сервера"), ("SRV-VM", "Проблема виртуализации")],
-            "APP": [("APP-CR", "Падение приложения"), ("APP-SL", "Деградация скорости")],
-            "INT": [("INT-IF", "Сбой интеграции"), ("INT-DL", "Задержка обмена")],
-            "DBA": [("DBA-DW", "Отказ БД"), ("DBA-LK", "Блокировки")],
-            "SEC": [("SEC-AT", "Инцидент ИБ")],
-            "HUM": [("HUM-ER", "Ошибка оператора")],
-        }
-        # Ставка потерь: участок -> (₽/час, маржа за тонну)
-        rates = {
-            "VMZ/TESC4/U-Otd": (Decimal("120000.00"), Decimal("3500.00")),
-            "VMZ/TESC4/U-Svar": (Decimal("90000.00"), Decimal("2800.00")),
-            "VMZ/TESC4/U-Form": (Decimal("120000.00"), Decimal("3500.00")),
-            "VMZ/TESC4/U-Gidro": (Decimal("150000.00"), Decimal("4200.00")),
-        }
+        for name in ENTERPRISES:
+            Enterprise.objects.get_or_create(name=name)
 
-        for code, name in enterprises:
-            Enterprise.objects.get_or_create(code=code, defaults={"name": name})
+        for enterprise_name, workshop_names in WORKSHOPS.items():
+            enterprise = Enterprise.objects.get(name=enterprise_name)
+            for name in workshop_names:
+                Workshop.objects.get_or_create(enterprise=enterprise, name=name)
 
-        for ent_code, workshops in workshops_by_enterprise.items():
-            enterprise = Enterprise.objects.get(code=ent_code)
-            for code, name in workshops:
-                Workshop.objects.get_or_create(
-                    enterprise=enterprise, code=code, defaults={"name": name}
-                )
+        for (enterprise_name, workshop_name), section_names in SECTIONS.items():
+            workshop = Workshop.objects.get(enterprise__name=enterprise_name, name=workshop_name)
+            for name in section_names:
+                Section.objects.get_or_create(workshop=workshop, name=name)
 
-        for workshop_key, sections in sections_by_workshop.items():
-            ent_code, ws_code = workshop_key.split("/")
-            workshop = Workshop.objects.get(enterprise__code=ent_code, code=ws_code)
-            for code, name in sections:
-                Section.objects.get_or_create(workshop=workshop, code=code, defaults={"name": name})
-
-        for section_key, items in units_by_section.items():
-            ent_code, ws_code, sec_code = section_key.split("/")
+        for (enterprise_name, workshop_name, section_name), units in UNITS.items():
             section = Section.objects.get(
-                workshop__enterprise__code=ent_code, workshop__code=ws_code, code=sec_code
+                workshop__enterprise__name=enterprise_name,
+                workshop__name=workshop_name,
+                name=section_name,
             )
-            for code, name, criticality in items:
+            for name, criticality in units:
                 Unit.objects.get_or_create(
-                    section=section, code=code, defaults={"name": name, "criticality": criticality}
+                    section=section, name=name, defaults={"criticality": criticality}
                 )
 
-        for code, name in categories:
+        for code, name in CATEGORIES:
             ItFaultCategory.objects.get_or_create(code=code, defaults={"name": name})
 
-        for cat_code, subs in subcategories.items():
-            category = ItFaultCategory.objects.get(code=cat_code)
+        for category_code, subs in SUBCATEGORIES.items():
+            category = ItFaultCategory.objects.get(code=category_code)
             for code, name in subs:
-                ItFaultSubcategory.objects.get_or_create(
-                    category=category, code=code, defaults={"name": name}
-                )
+                ItFaultSubcategory.objects.get_or_create(category=category, code=code, defaults={"name": name})
 
-        for section_key, (cost, ton) in rates.items():
-            ent_code, ws_code, sec_code = section_key.split("/")
+        for (enterprise_name, workshop_name, section_name), (cost, ton) in RATES.items():
             section = Section.objects.get(
-                workshop__enterprise__code=ent_code, workshop__code=ws_code, code=sec_code
+                workshop__enterprise__name=enterprise_name,
+                workshop__name=workshop_name,
+                name=section_name,
             )
             LossRate.objects.get_or_create(
                 section=section,
@@ -138,4 +196,10 @@ class Command(BaseCommand):
                 defaults={"cost_per_hour": cost, "ton_margin": ton, "note": "Демо-ставка"},
             )
 
-        self.stdout.write(self.style.SUCCESS("Справочники заполнены демо-данными."))
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"Справочники заполнены: предприятия={Enterprise.objects.count()}, "
+                f"цеха={Workshop.objects.count()}, участки={Section.objects.count()}, "
+                f"агрегаты={Unit.objects.count()}."
+            )
+        )

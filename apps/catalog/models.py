@@ -21,10 +21,10 @@ class TimeStampedModel(models.Model):
 
 
 class Enterprise(TimeStampedModel):
-    """Предприятие / завод / дивизион / депо группы ОМК — верхний уровень структуры."""
+    """Предприятие / завод / филиал группы ОМК — верхний уровень структуры."""
 
-    code = models.CharField("Код", max_length=32, unique=True)
-    name = models.CharField("Название", max_length=255)
+    name = models.CharField("Название", max_length=255, unique=True)
+    code = models.CharField("Код (если есть)", max_length=32, blank=True)
     is_active = models.BooleanField("Активно", default=True)
 
     class Meta:
@@ -42,17 +42,17 @@ class Workshop(TimeStampedModel):
     enterprise = models.ForeignKey(
         Enterprise, on_delete=models.PROTECT, related_name="workshops", verbose_name="Предприятие"
     )
-    code = models.CharField("Код", max_length=32)
     name = models.CharField("Название", max_length=255)
+    code = models.CharField("Код (если есть)", max_length=32, blank=True)
     is_active = models.BooleanField("Активен", default=True)
 
     class Meta:
         verbose_name = "Цех"
         verbose_name_plural = "Цеха"
         ordering = ["enterprise__name", "name"]
-        # Код цеха уникален в пределах предприятия.
+        # Название цеха уникально в пределах предприятия.
         constraints = [
-            models.UniqueConstraint(fields=["enterprise", "code"], name="uniq_workshop_code_per_enterprise")
+            models.UniqueConstraint(fields=["enterprise", "name"], name="uniq_workshop_name_per_enterprise")
         ]
 
     def __str__(self):
@@ -65,21 +65,21 @@ class Section(TimeStampedModel):
     workshop = models.ForeignKey(
         Workshop, on_delete=models.PROTECT, related_name="sections", verbose_name="Цех"
     )
-    code = models.CharField("Код", max_length=32)
     name = models.CharField("Название", max_length=255)
+    code = models.CharField("Код (если есть)", max_length=32, blank=True)
     is_active = models.BooleanField("Активен", default=True)
 
     class Meta:
         verbose_name = "Участок"
         verbose_name_plural = "Участки"
         ordering = ["workshop__name", "name"]
-        # Код участка уникален в пределах цеха.
+        # Название участка уникально в пределах цеха.
         constraints = [
-            models.UniqueConstraint(fields=["workshop", "code"], name="uniq_section_code_per_workshop")
+            models.UniqueConstraint(fields=["workshop", "name"], name="uniq_section_name_per_workshop")
         ]
 
     def __str__(self):
-        return f"{self.workshop.code} / {self.name}"
+        return f"{self.workshop.name} / {self.name}"
 
 
 class Unit(TimeStampedModel):
@@ -94,8 +94,8 @@ class Unit(TimeStampedModel):
     section = models.ForeignKey(
         Section, on_delete=models.PROTECT, related_name="units", verbose_name="Участок"
     )
-    code = models.CharField("Код", max_length=32)
     name = models.CharField("Название", max_length=255)
+    code = models.CharField("Код (если есть)", max_length=32, blank=True)
     criticality = models.CharField(
         "Критичность", max_length=16, choices=Criticality.choices, default=Criticality.MEDIUM
     )
@@ -106,11 +106,12 @@ class Unit(TimeStampedModel):
         verbose_name_plural = "Агрегаты"
         ordering = ["section__name", "name"]
         constraints = [
-            models.UniqueConstraint(fields=["section", "code"], name="uniq_unit_code_per_section")
+            models.UniqueConstraint(fields=["section", "name"], name="uniq_unit_name_per_section")
         ]
 
     def __str__(self):
-        return f"{self.name} ({self.code})"
+        code = f" ({self.code})" if self.code else ""
+        return f"{self.name}{code}"
 
 
 class ItFaultCategory(TimeStampedModel):
