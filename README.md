@@ -49,6 +49,7 @@ PortalProstoev/
 │  ├─ sla/              # потери, доступность, MTTR/MTBF и договоры SLA
 │  ├─ integrations/     # Oracle, OMNITRACKER (mock / live), импорт простоев
 │  └─ reports/          # дашборды и отчёты
+├─ static/              # стили и локальная библиотека графиков
 ├─ docs/                # документация рядом с кодом
 ├─ tests/
 ├─ docker-compose.yml
@@ -81,8 +82,8 @@ docker compose up -d
 # 6. Запуск
 ./.venv/bin/python manage.py runserver
 ```
-Открыть: главная — http://127.0.0.1:8000/, отчёт по потерям — http://127.0.0.1:8000/sla/,
-админка — http://127.0.0.1:8000/admin/.
+Открыть: главная — http://127.0.0.1:8000/ (дашборд), отчёт по потерям — http://127.0.0.1:8000/sla/,
+SLA-отчёт — http://127.0.0.1:8000/reports/sla/, админка — http://127.0.0.1:8000/admin/.
 Подробно — в [`docs/каркас.md`](docs/каркас.md).
 
 ## Принципы разработки
@@ -100,6 +101,7 @@ docker compose up -d
 - `docs/модуль-downtimes.md` — простои, кейсы и журналы изменений (этапы 3–4).
 - `docs/модуль-sla.md` — потери, доступность, MTTR/MTBF и штрафы SLA (Этап 5).
 - `docs/модуль-integrations.md` — импорт из Oracle и тикеты OMNITRACKER, mock/live (Этап 6).
+- `docs/модуль-reports.md` — дашборд, KPI, SLA-отчёт и выгрузка (Этап 7).
 - `docs/источник-данных-oracle.md` — структура источника простоев.
 - `docs/план.md` — план разработки по этапам.
 

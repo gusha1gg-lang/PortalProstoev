@@ -1,16 +1,25 @@
-<!DOCTYPE html>
+{% load static %}<!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}PortalProstoev{% endblock %}</title>
+    <link rel="stylesheet" href="{% static 'css/portal.css' %}">
+    {% block extra_head %}{% endblock %}
 </head>
 <body>
-    <header>
-        <h1>Портал учёта простоев по вине ИТ</h1>
+    <header class="topbar">
+        <div class="brand">Портал учёта простоев по вине ИТ</div>
+        <nav class="nav">
+            <a href="{% url 'reports:dashboard' %}">Дашборд</a>
+            <a href="{% url 'sla:report' %}">Потери и SLA</a>
+            <a href="{% url 'reports:sla_report' %}">SLA-отчёт</a>
+            <a href="/admin/">Админка</a>
+        </nav>
     </header>
-    <main>
+    <main class="container">
         {% block content %}{% endblock %}
     </main>
+    {% block extra_scripts %}{% endblock %}
 </body>
 </html>

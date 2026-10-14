@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Дашборд — PortalProstoev{% endblock %}
+
+{% block content %}
+  <h2>Дашборд за {{ period }}{% if enterprise %} · {{ enterprise.name }}{% endif %}</h2>
+
+  <form method="get" class="filters">
+    <label>Месяц
+      <input type="month" name="period" value="{{ period }}">
+    </label>
+    <label>Предприятие
+      <select name="enterprise">
+        <option value="">Все предприятия</option>
+        {% for item in enterprises %}
+          <option value="{{ item.id }}" {% if enterprise and enterprise.id == item.id %}selected{% endif %}>{{ item.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <button type="submit">Показать</button>
+    <a class="button secondary" href="{% url 'reports:export_csv' %}?period={{ period }}{% if enterprise %}&amp;enterprise={{ enterprise.id }}{% endif %}">Выгрузить CSV</a>
+    <a class="button secondary" href="{% url 'reports:sla_report' %}?period={{ period }}{% if enterprise %}&amp;enterprise={{ enterprise.id }}{% endif %}">SLA-отчёт</a>
+  </form>
+
+  {% if kpi.missing_rate %}
+    <div class="notice">По части простоев не заведена ставка участка — потери по ним не посчитаны. Проверьте «Ставки потерь» в админке.</div>
+  {% endif %}
+
+  <section class="kpi-grid">
+    <div class="kpi"><div class="label">Инцидентов</div><div class="value">{{ kpi.incident_count }}</div><div class="hint">кейсы и одиночные простои</div></div>
+    <div class="kpi"><div class="label">Простои, ч</div><div class="value">{{ kpi.downtime_hours }}</div><div class="hint">{{ kpi.downtime_min }} мин</div></div>
+    <div class="kpi"><div class="label">Потери, ₽</div><div class="value">{{ kpi.loss }}</div><div class="hint">по ставкам участков</div></div>
+    <div class="kpi"><div class="label">Доступность, %</div><div class="value">{{ kpi.availability }}</div><div class="hint">за период</div></div>
+    <div class="kpi"><div class="label">MTTR, мин</div><div class="value">{{ kpi.mttr_min }}</div><div class="hint">среднее восстановление</div></div>
+    <div class="kpi"><div class="label">MTBF, мин</div><div class="value">{{ kpi.mtbf_min }}</div><div class="hint">наработка между отказами</div></div>
+    <div class="kpi"><div class="label">Доля вины ИТ, %</div><div class="value">{{ kpi.it_share }}</div><div class="hint">от всех простоев</div></div>
+    <div class="kpi"><div class="label">Штраф SLA, ₽</div><div class="value">{{ kpi.penalty }}</div><div class="hint">по договорам</div></div>
+  </section>
+
+  <section class="charts">
+    <div class="card"><h3>Простои по месяцам, ч</h3><canvas id="chart-series"></canvas></div>
+    <div class="card"><h3>Потери по предприятиям, ₽</h3><canvas id="chart-breakdown"></canvas></div>
+    <div class="card"><h3>Топ причин, мин</h3><canvas id="chart-categories"></canvas></div>
+  </section>
+
+  <h3>Топ причин (категории вины)</h3>
+  {% if categories %}
+    <table>
+      <thead>
+        <tr><th>Категория</th><th class="num">Инцидентов</th><th class="num">Простои, мин</th><th class="num">Потери, ₽</th></tr>
+      </thead>
+      <tbody>
+        {% for item in categories %}
+          <tr>
+            <td>{{ item.name }}</td>
+            <td class="num">{{ item.count }}</td>
+            <td class="num">{{ item.minutes }}</td>
+            <td class="num">{{ item.loss }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="muted">За период нет подтверждённых простоев по вине ИТ.</p>
+  {% endif %}
+
+  <h3>По предприятиям</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>Предприятие</th>
+        <th class="num">Инцидентов</th>
+        <th class="num">Простои, мин</th>
+        <th class="num">Доступность, %</th>
+        <th class="num">Потери, ₽</th>
+        <th class="num">Штраф SLA, ₽</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in kpi.rows %}
+        <tr>
+          <td>{{ row.enterprise.name }}</td>
+          <td class="num">{{ row.incident_count }}</td>
+          <td class="num">{{ row.downtime_min }}</td>
+          <td class="num">{{ row.availability }}</td>
+          <td class="num">{{ row.total_loss }}</td>
+          <td class="num">{{ row.penalty }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <h3>Инциденты за период</h3>
+  {% if kpi.incidents %}
+    <table>
+      <thead>
+        <tr><th>Тип</th><th>Дата</th><th>Предприятие</th><th>Что</th><th>Категория</th><th class="num">Мин</th><th class="num">Потери, ₽</th></tr>
+      </thead>
+      <tbody>
+        {% for inc in kpi.incidents %}
+          <tr>
+            <td>{% if inc.kind == "case" %}Кейс{% else %}Простой{% endif %}</td>
+            <td>{{ inc.when|date:"d.m.Y H:i" }}</td>
+            <td>{{ inc.enterprise }}</td>
+            <td>{{ inc.title }}</td>
+            <td>{{ inc.category }}</td>
+            <td class="num">{{ inc.duration_min }}</td>
+            <td class="num">{{ inc.loss.amount }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="muted">Инцидентов за период нет.</p>
+  {% endif %}
+
+  {{ series_chart|json_script:"series-data" }}
+  {{ breakdown_chart|json_script:"breakdown-data" }}
+  {{ categories_chart|json_script:"categories-data" }}
+{% endblock %}
+
+{% block extra_scripts %}
+  <script src="{% static 'vendor/chart.umd.min.js' %}"></script>
+  <script>
+    (function () {
+      if (typeof Chart === "undefined") { return; }  // библиотека не загрузилась — работаем без графиков
+      var series = JSON.parse(document.getElementById("series-data").textContent);
+      var breakdown = JSON.parse(document.getElementById("breakdown-data").textContent);
+      var categories = JSON.parse(document.getElementById("categories-data").textContent);
+
+      var palette = ["#1f5fa9", "#2f8f6b", "#c2831c", "#b3261e", "#6b4fa0", "#0f7b8a", "#8a6d3b", "#4b5563"];
+
+      new Chart(document.getElementById("chart-series"), {
+        type: "bar",
+        data: {
+          labels: series.labels,
+          datasets: [{ label: "Простои, ч", data: series.downtime_hours, backgroundColor: palette[0] }]
+        },
+        options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+      });
+
+      new Chart(document.getElementById("chart-breakdown"), {
+        type: "bar",
+        data: {
+          labels: breakdown.labels,
+          datasets: [{ label: "Потери, ₽", data: breakdown.loss, backgroundColor: palette[1] }]
+        },
+        options: {
+          indexAxis: "y",
+          responsive: true,
+          plugins: { legend: { display: false } },
+          scales: { x: { beginAtZero: true } }
+        }
+      });
+
+      new Chart(document.getElementById("chart-categories"), {
+        type: "doughnut",
+        data: {
+          labels: categories.labels,
+          datasets: [{ data: categories.minutes, backgroundColor: palette }]
+        },
+        options: { responsive: true, plugins: { legend: { position: "bottom" } } }
+      });
+    })();
+  </script>
+{% endblock %}

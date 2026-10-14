@@ -183,20 +183,26 @@ def period_bounds(year: int, month: int):
     return start, end
 
 
-def _incidents(enterprise, start, end):
+def incidents_for(enterprise, start, end, it_only=True):
     """
     Инциденты предприятия за период: кейсы (по одному на кейс) и одиночные простои.
-    Учитываем только вину ИТ и статусы «Подтверждён»/«Закрыт».
+
+    Учитываем статусы «Подтверждён»/«Закрыт». При it_only=True — только вину ИТ
+    (так считаются потери и SLA); при it_only=False — все службы (нужно для показателя
+    «доля простоев по вине ИТ»).
     """
+    filters = {
+        "workshop__enterprise": enterprise,
+        "status__in": INCIDENT_STATUSES,
+        "started_at__gte": start,
+        "started_at__lt": end,
+    }
+    if it_only:
+        filters["fault_side"] = DowntimeEvent.FaultSide.IT
+
     events = list(
-        DowntimeEvent.objects.filter(
-            workshop__enterprise=enterprise,
-            fault_side=DowntimeEvent.FaultSide.IT,
-            status__in=INCIDENT_STATUSES,
-            started_at__gte=start,
-            started_at__lt=end,
-        )
-        .select_related("section", "case")
+        DowntimeEvent.objects.filter(**filters)
+        .select_related("section", "case", "fault_category", "workshop")
         .order_by("started_at")
     )
 
@@ -207,16 +213,23 @@ def _incidents(enterprise, start, end):
             if event.case_id in seen_cases:
                 continue  # кейс учитываем один раз
             seen_cases.add(event.case_id)
+            case = event.case
+            category = case.fault_category.name if case.fault_category else ""
             incidents.append(
                 {
                     "kind": "case",
-                    "title": str(event.case),
-                    "when": event.case.started_at,
-                    "duration_min": event.case.duration_min,
-                    "loss": case_loss(event.case),
+                    "title": str(case),
+                    "when": case.started_at,
+                    "duration_min": case.duration_min,
+                    "loss": case_loss(case),
+                    "category": category or "Без категории",
+                    "side": case.get_fault_side_display(),
+                    "enterprise": enterprise.name,
+                    "workshop": event.workshop.name,
                 }
             )
         else:
+            category = event.fault_category.name if event.fault_category else ""
             incidents.append(
                 {
                     "kind": "event",
@@ -224,6 +237,10 @@ def _incidents(enterprise, start, end):
                     "when": event.started_at,
                     "duration_min": event.duration_min,
                     "loss": event_loss(event),
+                    "category": category or "Без категории",
+                    "side": event.get_fault_side_display(),
+                    "enterprise": enterprise.name,
+                    "workshop": event.workshop.name,
                 }
             )
     return incidents
@@ -234,7 +251,7 @@ def sla_summary(enterprise, year: int, month: int) -> dict:
     start, end = period_bounds(year, month)
     period_min = int((end - start).total_seconds() // 60)
 
-    incidents = _incidents(enterprise, start, end)
+    incidents = incidents_for(enterprise, start, end)
     downtime_min = sum(i["duration_min"] for i in incidents)
     count = len(incidents)
 

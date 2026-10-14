@@ -45,6 +45,7 @@ INSTALLED_APPS = [
     "apps.downtimes",
     "apps.sla",
     "apps.integrations",
+    "apps.reports",
 ]
 
 MIDDLEWARE = [
@@ -106,6 +107,8 @@ USE_TZ = True
 # --- Статические файлы ---
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
+# Наши общие статические файлы (стили, библиотека графиков) лежат в папке static/.
+STATICFILES_DIRS = [BASE_DIR / "static"]
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
