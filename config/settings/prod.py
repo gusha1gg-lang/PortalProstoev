@@ -24,8 +24,14 @@ SECURE_HSTS_INCLUDE_SUBDOMAINS = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = "DENY"
 
-# ADFS включается флагом AUTH_MODE=adfs (подключим на этапе 9).
-AUTH_MODE = "adfs"
+# --- Аутентификация (этап 9) ---
+# На проде по умолчанию корпоративный вход ADFS. Флагом AUTH_MODE можно временно
+# вернуть обычный вход (например, чтобы зайти служебной учёткой для настройки).
+AUTH_MODE = os.getenv("AUTH_MODE", "adfs")
+if AUTH_MODE == "adfs":
+    from .adfs import apply_adfs
+
+    apply_adfs(globals())
 
 # На проде письма уходят через реальный почтовый сервер (реквизиты — в .env).
 EMAIL_BACKEND = os.getenv("DJANGO_EMAIL_BACKEND", "django.core.mail.backends.smtp.EmailBackend")

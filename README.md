@@ -5,7 +5,7 @@
 управление инцидентами и RCA, отчётность для руководства и заказчика.
 
 ## Технологический стек
-- **Язык + фреймворк:** Python 3.12 + Django 5
+- **Язык + фреймворк:** Python 3.12+ + Django 6.x
 - **Интерфейс:** Django Templates + HTMX, графики Chart.js (без React)
 - **Админка/CRUD:** Django Admin
 - **БД приложения:** PostgreSQL + Django ORM
@@ -78,15 +78,19 @@ docker compose up -d
 ./.venv/bin/python manage.py seed_downtimes     # демо-простои
 ./.venv/bin/python manage.py seed_sla           # демо-договоры SLA
 ./.venv/bin/python manage.py seed_notifications # демо-правила уведомлений
+./.venv/bin/python manage.py seed_users         # демо-пользователи по ролям
 # (необязательно) импорт простоев из источника в mock-режиме
 ./.venv/bin/python manage.py import_oracle
 
 # 6. Запуск
 ./.venv/bin/python manage.py runserver
 ```
-Открыть: главная — http://127.0.0.1:8000/ (дашборд), отчёт по потерям — http://127.0.0.1:8000/sla/,
-SLA-отчёт — http://127.0.0.1:8000/reports/sla/, админка — http://127.0.0.1:8000/admin/.
-Подробно — в [`docs/каркас.md`](docs/каркас.md).
+Открыть: http://127.0.0.1:8000/ — портал попросит **войти** (страница входа).
+В разработке вход обычный, логин/пароль. Админ из шага 5, демо-пользователи — из `seed_users`
+(пароль `DevPortal2026!`): `operator`, `specialist`, `it_manager`, `management`.
+Дашборд — http://127.0.0.1:8000/, отчёт по потерям — /sla/, SLA-отчёт — /reports/sla/,
+журнал уведомлений — /notifications/, админка — /admin/.
+Подробно — в [`docs/каркас.md`](docs/каркас.md) и [`docs/модуль-accounts.md`](docs/модуль-accounts.md).
 
 ## Принципы разработки
 - Мок-режим обязателен: проект собирается и работает без доступа в домен.
@@ -105,6 +109,7 @@ SLA-отчёт — http://127.0.0.1:8000/reports/sla/, админка — http:/
 - `docs/модуль-integrations.md` — импорт из Oracle и тикеты OMNITRACKER, mock/live (Этап 6).
 - `docs/модуль-reports.md` — дашборд, KPI, SLA-отчёт и выгрузка (Этап 7).
 - `docs/модуль-notifications.md` — уведомления и эскалации по email (Этап 8).
+- `docs/модуль-accounts.md` — вход, роли и заготовка ADFS (Этап 9).
 - `docs/источник-данных-oracle.md` — структура источника простоев.
 - `docs/план.md` — план разработки по этапам.
 

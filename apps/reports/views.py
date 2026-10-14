@@ -7,6 +7,7 @@
 import csv
 import json
 
+from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse
 from django.shortcuts import render
 from django.utils import timezone
@@ -44,6 +45,7 @@ def _period_and_enterprise(request):
     return period, year, month, enterprise
 
 
+@login_required
 def dashboard(request):
     """Главная страница: KPI, графики и срезы за выбранный период."""
     period, year, month, enterprise = _period_and_enterprise(request)
@@ -85,6 +87,7 @@ def dashboard(request):
     return render(request, "reports/dashboard.html", context)
 
 
+@login_required
 def sla_report(request):
     """Печатная страница «SLA-отчёт для заказчика»: по каждому предприятию и итоги."""
     period, year, month, enterprise = _period_and_enterprise(request)
@@ -100,6 +103,7 @@ def sla_report(request):
     return render(request, "reports/sla_report.html", context)
 
 
+@login_required
 def export_csv(request):
     """Выгрузка инцидентов за период в CSV (открывается в Excel, кодировка с BOM)."""
     period, year, month, enterprise = _period_and_enterprise(request)
@@ -128,6 +132,7 @@ def export_csv(request):
     return response
 
 
+@login_required
 def chart_data(request):
     """Данные для графиков в виде JSON (используется дашбордом при обновлении без перезагрузки)."""
     period, year, month, enterprise = _period_and_enterprise(request)

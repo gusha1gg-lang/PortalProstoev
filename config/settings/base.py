@@ -105,6 +105,14 @@ TIME_ZONE = "Europe/Moscow"
 USE_I18N = True
 USE_TZ = True
 
+# --- Вход и роли (этап 9) ---
+# В разработке вход обычный (логин/пароль Django). На проде ADFS включается
+# флагом AUTH_MODE=adfs (см. config/settings/adfs.py и config/settings/prod.py).
+AUTHENTICATION_BACKENDS = ["django.contrib.auth.backends.ModelBackend"]
+LOGIN_URL = "accounts:login"
+LOGIN_REDIRECT_URL = "reports:dashboard"
+LOGOUT_REDIRECT_URL = "accounts:login"
+
 # --- Статические файлы ---
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"

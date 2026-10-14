@@ -11,3 +11,4 @@
 
 python-oracledb>=2.0      # драйвер Oracle (источник простоев)
 requests>=2.31            # HTTP-запросы к OMNITRACKER (ITIL-тикеты)
+django-auth-adfs>=1.15    # корпоративный вход ADFS (AUTH_MODE=adfs)

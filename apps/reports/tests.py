@@ -3,6 +3,7 @@ import json
 from datetime import datetime
 from decimal import Decimal
 
+from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
 
@@ -31,6 +32,7 @@ class ReportsTestBase(TestCase):
             valid_from="2025-01-01",
         )
         cls.category = ItFaultCategory.objects.create(code="net", name="Сеть")
+        cls.user = get_user_model().objects.create_user(username="tester", password="TestPass123!")
 
     def make_event(self, start, end, side=DowntimeEvent.FaultSide.IT, category=None):
         return DowntimeEvent.objects.create(
@@ -110,6 +112,16 @@ class SliceTests(ReportsTestBase):
 
 
 class ViewTests(ReportsTestBase):
+    def setUp(self):
+        # Страницы закрыты входом (этап 9) — входим тестовым пользователем.
+        self.client.force_login(self.user)
+
+    def test_anonymous_is_redirected_to_login(self):
+        self.client.logout()
+        response = self.client.get("/")
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/accounts/login/", response["Location"])
+
     def test_dashboard_renders(self):
         self.make_event("2026-10-10 15:00", "2026-10-10 15:30", category=self.category)
         response = self.client.get("/", {"period": "2026-10"})

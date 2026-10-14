@@ -1,4 +1,5 @@
 """Простая страница отчёта по потерям и SLA (без JS — обычный HTML-список)."""
+from django.contrib.auth.decorators import login_required
 from django.shortcuts import render
 from django.utils import timezone
 
@@ -20,6 +21,7 @@ def _parse_period(raw: str):
         return today.year, today.month
 
 
+@login_required
 def report(request):
     """Отчёт за месяц: по каждому предприятию — потери, доступность, MTTR/MTBF, штраф."""
     today = timezone.localdate()

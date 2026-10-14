@@ -22,6 +22,26 @@ ALL_ROLES = [
 
 # Заготовка для будущего маппинга групп AD -> роли портала (этап 9).
 # Ключ — имя группы в AD, значение — роль портала.
+# Точные имена групп ищет и подтверждает ИТ-служба (question.md, В25).
 AD_GROUP_TO_ROLE = {
     # "CN=Portal-Operators,OU=Groups,DC=company,DC=local": ROLE_OPERATOR,
+    # "CN=Portal-Downtime,OU=Groups,DC=company,DC=local": ROLE_DOWNTIME_SPECIALIST,
+    # "CN=Portal-IT-Managers,OU=Groups,DC=company,DC=local": ROLE_IT_MANAGER,
+    # "CN=Portal-Management,OU=Groups,DC=company,DC=local": ROLE_MANAGEMENT,
+    # "CN=Portal-Admins,OU=Groups,DC=company,DC=local": ROLE_ADMIN,
 }
+
+
+def roles_for_ad_groups(ad_groups) -> list[str]:
+    """
+    Превращает список групп AD в список ролей портала по карте AD_GROUP_TO_ROLE.
+
+    Простыми словами: пришёл сотрудник из AD с набором групп — смотрим, каким
+    ролям портала они соответствуют. Незнакомые группы просто игнорируем.
+    """
+    roles: list[str] = []
+    for group in ad_groups or []:
+        role = AD_GROUP_TO_ROLE.get(group)
+        if role and role not in roles:
+            roles.append(role)
+    return roles
