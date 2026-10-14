@@ -69,8 +69,9 @@ docker compose up -d
 # 4. Структура БД
 ./.venv/bin/python manage.py migrate
 
-# 5. Администратор (один раз)
+# 5. Администратор и демо-данные (один раз)
 ./.venv/bin/python manage.py createsuperuser
+./.venv/bin/python manage.py seed_catalog
 
 # 6. Запуск
 ./.venv/bin/python manage.py runserver
@@ -88,7 +89,9 @@ docker compose up -d
 ## Документация проекта
 - [`project.md`](project.md) — полное описание проекта, стек, функции, бизнес-правила.
 - [`AGENTS.MD`](AGENTS.MD) — правила работы агента, соглашения и техрешения.
-- `docs/` — документация по каждому модулю рядом с кодом.
+- `docs/каркас.md` — как устроен каркас проекта (Этап 1).
+- `docs/модуль-catalog.md` — справочники и роли (Этап 2).
+- `docs/план.md` — план разработки по этапам.
 
 ## Правила ведения проекта
 - **`README.md` и `AGENTS.MD` обновляются при каждом изменении**, затрагивающем запуск, стек,

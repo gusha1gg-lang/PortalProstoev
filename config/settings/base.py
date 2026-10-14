@@ -39,7 +39,9 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
-    # Наши приложения (apps/...) подключаем по мере разработки.
+    # Наши приложения (apps/...)
+    "apps.accounts",
+    "apps.catalog",
 ]
 
 MIDDLEWARE = [
