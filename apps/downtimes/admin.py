@@ -84,7 +84,7 @@ class DowntimeEventAdmin(admin.ModelAdmin):
     search_fields = ("note", "recorded_by_name", "external_id", "workshop__name", "unit__name")
     date_hierarchy = "started_at"
     autocomplete_fields = ("workshop", "section", "unit", "fault_category", "fault_subcategory", "case")
-    readonly_fields = ("duration_min", "created_by", "updated_by", "created_at", "updated_at")
+    readonly_fields = ("duration_min", "loss_display", "created_by", "updated_by", "created_at", "updated_at")
     inlines = [DowntimeEventLogInline]
     actions = ["merge_into_case"]
     fieldsets = (
@@ -92,6 +92,7 @@ class DowntimeEventAdmin(admin.ModelAdmin):
         ("Место", {"fields": ("workshop", "section", "unit")}),
         ("Вина", {"fields": ("service", "fault_side", "fault_category", "fault_subcategory")}),
         ("Описание", {"fields": ("note", "recorded_by_name")}),
+        ("Потери", {"fields": ("unproduced_tons", "loss_display")}),
         ("Состояние и источник", {"fields": ("status", "source", "external_id")}),
         ("Объединение", {"fields": ("case",)}),
         (
@@ -145,6 +146,18 @@ class DowntimeEventAdmin(admin.ModelAdmin):
         case = create_case_from_events(events, user=request.user)
         self.message_user(request, f"Создан кейс {case.number} из {len(events)} событий.")
 
+    @admin.display(description="Потери (расчёт)")
+    def loss_display(self, obj):
+        """Показывает расчёт потерь по простою. Считается на лету (см. apps.sla)."""
+        if obj is None or obj.pk is None:
+            return "—"
+        from apps.sla.services import event_loss
+
+        loss = event_loss(obj)
+        if loss.missing_rate:
+            return "нет ставки (не задан участок или ставка)"
+        return f"{loss.amount} ₽"
+
     def save_model(self, request, obj, form, change):
         """Сохраняем и пишем журнал: создание отдельной записью, изменения — если есть."""
         obj.updated_by = request.user
@@ -183,6 +196,7 @@ class DowntimeCaseAdmin(admin.ModelAdmin):
         "started_at",
         "ended_at",
         "duration_min",
+        "loss_display",
         "created_by",
         "updated_by",
         "created_at",
@@ -194,6 +208,7 @@ class DowntimeCaseAdmin(admin.ModelAdmin):
         ("Кейс", {"fields": ("number", "title", "status")}),
         ("Вина", {"fields": ("fault_side", "fault_category", "fault_subcategory")}),
         ("Период и длительность", {"fields": ("started_at", "ended_at", "duration_min")}),
+        ("Потери", {"fields": ("unproduced_tons", "loss_display")}),
         ("Описание", {"fields": ("note",)}),
         (
             "Служебное",
@@ -207,6 +222,21 @@ class DowntimeCaseAdmin(admin.ModelAdmin):
     @admin.display(description="Событий")
     def events_count(self, obj):
         return obj.events.count()
+
+    @admin.display(description="Потери (расчёт)")
+    def loss_display(self, obj):
+        """Показывает расчёт потерь по кейсу (без двойного счёта). См. apps.sla."""
+        if obj is None or obj.pk is None:
+            return "—"
+        from apps.sla.services import case_loss
+
+        loss = case_loss(obj)
+        text = f"{loss.amount} ₽"
+        if loss.tons:
+            text += f" · {loss.tons} т"
+        if loss.missing_rate:
+            text += " · нет ставки по части участков"
+        return text
 
     @admin.action(description="Пересчитать длительность выбранных кейсов")
     def recalc_selected(self, request, queryset):

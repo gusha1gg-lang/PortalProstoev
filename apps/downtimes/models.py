@@ -104,6 +104,12 @@ class DowntimeEvent(TimeStampedModel):
     note = models.TextField("Примечание", blank=True)
     recorded_by_name = models.CharField("Кто зафиксировал (ФИО)", max_length=255, blank=True)
 
+    # --- Потери (этап 5) ---
+    # Непроизведённые тонны. Для одиночного простоя — здесь; для кейса — у одного из событий либо на карточке кейса.
+    unproduced_tons = models.DecimalField(
+        "Непроизведённые тонны", max_digits=12, decimal_places=3, default=0
+    )
+
     # --- Состояние и источник ---
     status = models.CharField("Статус", max_length=16, choices=Status.choices, default=Status.NEW)
     source = models.CharField("Источник", max_length=16, choices=Source.choices, default=Source.MANUAL)
@@ -258,6 +264,11 @@ class DowntimeCase(TimeStampedModel):
     started_at = models.DateTimeField("Начало", null=True, blank=True, editable=False)
     ended_at = models.DateTimeField("Окончание", null=True, blank=True, editable=False)
     duration_min = models.PositiveIntegerField("Длительность, мин", default=0, editable=False)
+
+    # Дополнительные тонны по кейсу целиком (когда тонны нельзя разнести по участкам).
+    unproduced_tons = models.DecimalField(
+        "Непроизведённые тонны", max_digits=12, decimal_places=3, default=0
+    )
 
     note = models.TextField("Описание", blank=True)
     created_by = models.ForeignKey(

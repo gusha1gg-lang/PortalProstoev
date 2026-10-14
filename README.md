@@ -46,7 +46,7 @@ PortalProstoev/
 │  ├─ accounts/         # вход и роли
 │  ├─ catalog/          # справочники (предприятия, цеха, участки, агрегаты, категории вины)
 │  ├─ downtimes/        # простои + кейсы (объединение) + журналы изменений
-│  ├─ sla/              # потери и SLA
+│  ├─ sla/              # потери, доступность, MTTR/MTBF и договоры SLA
 │  ├─ integrations/     # Oracle, OMNITRACKER (mock / live)
 │  └─ reports/          # дашборды и отчёты
 ├─ docs/                # документация рядом с кодом
@@ -74,11 +74,13 @@ docker compose up -d
 ./.venv/bin/python manage.py createsuperuser
 ./.venv/bin/python manage.py seed_catalog       # справочники
 ./.venv/bin/python manage.py seed_downtimes     # демо-простои
+./.venv/bin/python manage.py seed_sla           # демо-договоры SLA
 
 # 6. Запуск
 ./.venv/bin/python manage.py runserver
 ```
-Открыть: главная — http://127.0.0.1:8000/, админка — http://127.0.0.1:8000/admin/.
+Открыть: главная — http://127.0.0.1:8000/, отчёт по потерям — http://127.0.0.1:8000/sla/,
+админка — http://127.0.0.1:8000/admin/.
 Подробно — в [`docs/каркас.md`](docs/каркас.md).
 
 ## Принципы разработки
@@ -94,6 +96,7 @@ docker compose up -d
 - `docs/каркас.md` — как устроен каркас проекта (Этап 1).
 - `docs/модуль-catalog.md` — справочники и роли (Этап 2).
 - `docs/модуль-downtimes.md` — простои, кейсы и журналы изменений (этапы 3–4).
+- `docs/модуль-sla.md` — потери, доступность, MTTR/MTBF и штрафы SLA (Этап 5).
 - `docs/источник-данных-oracle.md` — структура источника простоев.
 - `docs/план.md` — план разработки по этапам.
 

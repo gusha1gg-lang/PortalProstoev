@@ -26,6 +26,7 @@ TRACKED_FIELDS = [
     ("fault_subcategory", "Подкатегория вины"),
     ("note", "Примечание"),
     ("recorded_by_name", "Кто зафиксировал"),
+    ("unproduced_tons", "Непроизведённые тонны"),
     ("status", "Статус"),
     ("source", "Источник"),
     ("case", "Кейс"),
@@ -41,6 +42,7 @@ CASE_TRACKED_FIELDS = [
     ("started_at", "Начало"),
     ("ended_at", "Окончание"),
     ("duration_min", "Длительность, мин"),
+    ("unproduced_tons", "Непроизведённые тонны"),
     ("note", "Описание"),
 ]
 

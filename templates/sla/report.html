@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+
+{% block title %}Потери и SLA — PortalProstoev{% endblock %}
+
+{% block content %}
+  <h2>Потери и SLA за период</h2>
+
+  <form method="get">
+    <label>Месяц:
+      <input type="month" name="period" value="{{ period }}">
+    </label>
+    <button type="submit">Показать</button>
+  </form>
+
+  <p>
+    Потери = часы × ставка участка + тонны × маржа. Для кейсов время по каждому участку
+    берётся без двойного счёта. Учитываются простые вины ИТ со статусом
+    «Подтверждён» или «Закрыт».
+  </p>
+
+  <table border="1" cellpadding="6" cellspacing="0">
+    <thead>
+      <tr>
+        <th>Предприятие</th>
+        <th>Инцидентов</th>
+        <th>Простои, мин</th>
+        <th>Доступность, %</th>
+        <th>MTTR, мин</th>
+        <th>MTBF, мин</th>
+        <th>Потери, ₽</th>
+        <th>Штраф SLA, ₽</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+        <tr>
+          <td>{{ row.enterprise.name }}</td>
+          <td>{{ row.incident_count }}</td>
+          <td>{{ row.downtime_min }}</td>
+          <td>
+            {{ row.availability }}
+            {% if row.missing_rate %}<br><small>нет ставки по части простоев</small>{% endif %}
+          </td>
+          <td>{{ row.mttr_min }}</td>
+          <td>{{ row.mtbf_min }}</td>
+          <td>{{ row.total_loss }}</td>
+          <td>
+            {% if row.contract %}
+              {{ row.penalty }}
+            {% else %}
+              <small>нет договора</small>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr>
+        <th colspan="1">Итого</th>
+        <th>{{ totals.incident_count }}</th>
+        <th colspan="4"></th>
+        <th>{{ totals.total_loss }}</th>
+        <th>{{ totals.penalty }}</th>
+      </tr>
+    </tfoot>
+  </table>
+
+  <h3>Инциденты за период</h3>
+  {% for row in rows %}
+    {% if row.incidents %}
+      <h4>{{ row.enterprise.name }}</h4>
+      <table border="1" cellpadding="6" cellspacing="0">
+        <thead>
+          <tr>
+            <th>Тип</th>
+            <th>Когда</th>
+            <th>Что</th>
+            <th>Длительность, мин</th>
+            <th>Потери, ₽</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for inc in row.incidents %}
+            <tr>
+              <td>{% if inc.kind == "case" %}Кейс{% else %}Простой{% endif %}</td>
+              <td>{{ inc.when|date:"d.m.Y H:i" }}</td>
+              <td>{{ inc.title }}</td>
+              <td>{{ inc.duration_min }}</td>
+              <td>{{ inc.loss.amount }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% endif %}
+  {% endfor %}
+
+  <p><a href="/admin/sla/slacontract/">Договоры SLA в админке</a> · <a href="/">На главную</a></p>
+{% endblock %}

@@ -43,6 +43,7 @@ INSTALLED_APPS = [
     "apps.accounts",
     "apps.catalog",
     "apps.downtimes",
+    "apps.sla",
 ]
 
 MIDDLEWARE = [
