@@ -45,7 +45,7 @@ PortalProstoev/
 ├─ apps/
 │  ├─ accounts/         # вход и роли
 │  ├─ catalog/          # справочники (предприятия, цеха, участки, агрегаты, категории вины)
-│  ├─ downtimes/        # простои + конструктор кейсов
+│  ├─ downtimes/        # простои + журнал изменений (далее — конструктор кейсов)
 │  ├─ sla/              # потери и SLA
 │  ├─ integrations/     # Oracle, OMNITRACKER (mock / live)
 │  └─ reports/          # дашборды и отчёты
@@ -70,9 +70,10 @@ docker compose up -d
 # 4. Структура БД
 ./.venv/bin/python manage.py migrate
 
-# 5. Администратор и демо-данные (один раз)
+# 5. Администратор и данные (один раз)
 ./.venv/bin/python manage.py createsuperuser
-./.venv/bin/python manage.py seed_catalog
+./.venv/bin/python manage.py seed_catalog       # справочники
+./.venv/bin/python manage.py seed_downtimes     # демо-простои
 
 # 6. Запуск
 ./.venv/bin/python manage.py runserver
@@ -92,6 +93,8 @@ docker compose up -d
 - [`AGENTS.MD`](AGENTS.MD) — правила работы агента, соглашения и техрешения.
 - `docs/каркас.md` — как устроен каркас проекта (Этап 1).
 - `docs/модуль-catalog.md` — справочники и роли (Этап 2).
+- `docs/модуль-downtimes.md` — простои и журнал изменений (Этап 3).
+- `docs/источник-данных-oracle.md` — структура источника простоев.
 - `docs/план.md` — план разработки по этапам.
 
 ## Правила ведения проекта

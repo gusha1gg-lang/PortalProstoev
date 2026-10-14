@@ -42,6 +42,7 @@ INSTALLED_APPS = [
     # Наши приложения (apps/...)
     "apps.accounts",
     "apps.catalog",
+    "apps.downtimes",
 ]
 
 MIDDLEWARE = [
