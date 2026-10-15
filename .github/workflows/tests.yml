@@ -1,0 +1,67 @@
+# Автоматический прогон тестов при каждом push и pull request.
+# Простыми словами: GitHub сам поднимает временную БД, ставит зависимости
+# и запускает тесты. Если что-то сломали — увидим галочку/крестик и лог.
+name: Тесты
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    name: Django-тесты
+    runs-on: ubuntu-latest
+
+    # Временная база PostgreSQL только на время прогона.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: portalprostoev
+          POSTGRES_USER: portal
+          POSTGRES_PASSWORD: portal
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U portal -d portalprostoev"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    # Настройки окружения: как в разработке (mock-интеграции, dev-вход).
+    env:
+      DJANGO_SETTINGS_MODULE: config.settings.dev
+      DJANGO_SECRET_KEY: ci-only-secret-key
+      DJANGO_DEBUG: "True"
+      INTEGRATION_MODE: mock
+      AUTH_MODE: dev
+      POSTGRES_DB: portalprostoev
+      POSTGRES_USER: portal
+      POSTGRES_PASSWORD: portal
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: "5432"
+
+    steps:
+      - name: Забрать код
+        uses: actions/checkout@v4
+
+      - name: Установить Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Установить зависимости
+        run: pip install -r requirements.txt
+
+      - name: Проверить настройки
+        run: python manage.py check
+
+      - name: Проверить, что миграции актуальны
+        run: python manage.py makemigrations --check --dry-run
+
+      - name: Применить миграции
+        run: python manage.py migrate --noinput
+
+      - name: Запустить тесты
+        run: python manage.py test
