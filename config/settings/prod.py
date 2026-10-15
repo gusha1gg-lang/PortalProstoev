@@ -16,9 +16,11 @@ ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", "")
 CSRF_TRUSTED_ORIGINS = env_list("DJANGO_CSRF_TRUSTED_ORIGINS", "")
 
 # --- Базовые требования безопасности для прода ---
+# Значения по умолчанию — боевые. Для локальной «репетиции прода» по http их можно
+# временно ослабить через .env (см. docs/внедрение.md, раздел про репетицию).
 SECURE_SSL_REDIRECT = env_bool("DJANGO_SECURE_SSL_REDIRECT", True)
-SESSION_COOKIE_SECURE = True
-CSRF_COOKIE_SECURE = True
+SESSION_COOKIE_SECURE = env_bool("DJANGO_SESSION_COOKIE_SECURE", True)
+CSRF_COOKIE_SECURE = env_bool("DJANGO_CSRF_COOKIE_SECURE", True)
 SECURE_HSTS_SECONDS = 31536000
 SECURE_HSTS_INCLUDE_SUBDOMAINS = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
