@@ -24,6 +24,11 @@ SECURE_HSTS_INCLUDE_SUBDOMAINS = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = "DENY"
 
+# HTTPS на проде завершается на nginx, а до приложения доходит обычный http-запрос.
+# Без этой строки Django не поймёт, что «снаружи» HTTPS, и при SECURE_SSL_REDIRECT
+# уйдёт в бесконечный редирект. nginx обязан передавать заголовок X-Forwarded-Proto.
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
 # --- Аутентификация (этап 9) ---
 # На проде по умолчанию корпоративный вход ADFS. Флагом AUTH_MODE можно временно
 # вернуть обычный вход (например, чтобы зайти служебной учёткой для настройки).

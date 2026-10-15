@@ -1,0 +1,41 @@
+# Служба systemd для портала (запускает gunicorn).
+#
+# Куда положить на сервере:  /etc/systemd/system/portalprostoev.service
+# Включить и запустить:
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now portalprostoev
+# Смотреть состояние и лог:
+#   systemctl status portalprostoev
+#   journalctl -u portalprostoev -f
+#
+# Перед установкой замените, если у вас другие пути/пользователь:
+#   /opt/portalprostoev  — папка с проектом на сервере
+#   portal               — служебный пользователь Linux, от которого работает портал
+
+[Unit]
+Description=PortalProstoev (Django + gunicorn)
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=portal
+Group=portal
+WorkingDirectory=/opt/portalprostoev
+
+# Настройки Django читаются из файла .env рядом с manage.py (сам портал его подхватывает).
+Environment=PYTHONUNBUFFERED=1
+
+# 3 рабочих процесса — достаточно для внутреннего портала.
+ExecStart=/opt/portalprostoev/.venv/bin/gunicorn config.wsgi:application \
+    --bind 127.0.0.1:8000 \
+    --workers 3 \
+    --timeout 60 \
+    --access-logfile - \
+    --error-logfile -
+
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

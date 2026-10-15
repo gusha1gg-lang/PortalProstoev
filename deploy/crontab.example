@@ -1,0 +1,22 @@
+# Расписание задач для портала (cron).
+#
+# Установить:  crontab -e
+# Открыть под пользователем, которому разрешено читать .env и базу (обычно тот же, что запускает портал).
+#
+# Время — по серверу. Портал работает в часовом поясе Europe/Moscow.
+# ВНИМАНИЕ: команды ниже — пример. Итоговую частоту согласовать (question.md, В39).
+
+# Импорт простоев из источника — каждый час в рабочее время (пн–пт, 8:00–20:00).
+0 8-20 * * 1-5  cd /opt/portalprostoev && ./.venv/bin/python manage.py import_saarc >> /var/log/portalprostoev-import.log 2>&1
+
+# Проверка эскалаций по SLA — каждые 30 минут.
+*/30 * * * *     cd /opt/portalprostoev && ./.venv/bin/python manage.py check_escalations >> /var/log/portalprostoev-notify.log 2>&1
+
+# Сводка по простоям — каждый день в 8:00.
+0 8 * * *        cd /opt/portalprostoev && ./.venv/bin/python manage.py send_digest >> /var/log/portalprostoev-notify.log 2>&1
+
+# Резервная копия базы — каждый день в 2:30.
+30 2 * * *       /opt/portalprostoev/deploy/backup-db.sh >> /var/log/portalprostoev-backup.log 2>&1
+
+# Чистка просроченных сессий Django — раз в сутки.
+15 3 * * *       cd /opt/portalprostoev && ./.venv/bin/python manage.py clearsessions >> /var/log/portalprostoev-housekeeping.log 2>&1
