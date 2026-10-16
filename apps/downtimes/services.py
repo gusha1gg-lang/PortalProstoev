@@ -30,6 +30,8 @@ TRACKED_FIELDS = [
     ("unproduced_tons", "Непроизведённые тонны"),
     ("status", "Статус"),
     ("source", "Источник"),
+    ("sync_mark", "Отметка синхронизации"),
+    ("needs_review", "На проверку"),
     ("case", "Кейс"),
 ]
 

@@ -4,7 +4,7 @@ from django.shortcuts import redirect
 from django.template.response import TemplateResponse
 from django.urls import path
 
-from .models import DowntimeCase, DowntimeCaseLog, DowntimeEvent, DowntimeEventLog
+from .models import DowntimeCase, DowntimeCaseLog, DowntimeEvent, DowntimeEventLog, ReportingPeriod
 from .services import (
     build_diff,
     create_case_from_events,
@@ -71,8 +71,12 @@ class DowntimeEventAdmin(admin.ModelAdmin):
         "status",
         "fault_side",
         "case",
+        "sync_mark",
+        "needs_review",
     )
     list_filter = (
+        "needs_review",
+        "sync_mark",
         "status",
         "fault_side",
         "source",
@@ -83,7 +87,16 @@ class DowntimeEventAdmin(admin.ModelAdmin):
     search_fields = ("note", "recorded_by_name", "external_id", "workshop__name", "unit__name")
     date_hierarchy = "started_at"
     autocomplete_fields = ("workshop", "section", "unit", "fault_category", "fault_subcategory", "case")
-    readonly_fields = ("duration_min", "loss_display", "created_by", "updated_by", "created_at", "updated_at")
+    readonly_fields = (
+        "duration_min",
+        "loss_display",
+        "created_by",
+        "updated_by",
+        "created_at",
+        "updated_at",
+        "source_key",
+        "synced_at",
+    )
     inlines = [DowntimeEventLogInline]
     actions = ["merge_into_case"]
     fieldsets = (
@@ -93,6 +106,7 @@ class DowntimeEventAdmin(admin.ModelAdmin):
         ("Описание", {"fields": ("note", "recorded_by_name")}),
         ("Потери", {"fields": ("unproduced_tons", "loss_display")}),
         ("Состояние и источник", {"fields": ("status", "source", "external_id")}),
+        ("Синхронизация (11.6)", {"fields": ("sync_mark", "needs_review", "source_key", "synced_at")}),
         ("Объединение", {"fields": ("case",)}),
         (
             "Служебное",
@@ -302,3 +316,13 @@ class DowntimeCaseLogAdmin(admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
+
+
+@admin.register(ReportingPeriod)
+class ReportingPeriodAdmin(admin.ModelAdmin):
+    """Закрытые периоды (месяцы). Закрытие/открытие — супервайзерская операция."""
+
+    list_display = ("year", "month", "closed_at", "closed_by", "note")
+    list_filter = ("year",)
+    ordering = ("-year", "-month")
+    readonly_fields = ("closed_at", "created_at", "updated_at")

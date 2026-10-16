@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block title %}На проверку — PortalProstoev{% endblock %}
+
+{% block content %}
+  <h2>На проверку</h2>
+
+  <p>
+    Здесь собраны простои, которые <b>источник поправил или снял</b>. Мы такие записи
+    <b>не удаляем</b> — показываем, что изменилось, и ждём подтверждения.
+    Отметка <b>Исправлен</b> — переписали описание, <b>Скорректирован</b> — поправили время,
+    <b>Снят</b> — строки больше нет в источнике.
+  </p>
+  <p class="muted">
+    Всего на проверку: <b>{{ total }}</b>. Порядок: открывайте запись, сверяйте и подтверждайте —
+    после подтверждения она уходит из списка, а отметка остаётся в истории.
+    <a href="{% url 'integrations:sync' %}">← К синхронизации</a>
+  </p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Начало</th>
+        <th>Цех / участок</th>
+        <th class="num">Длит., мин</th>
+        <th>Отметка</th>
+        <th>Примечание</th>
+        <th>Источник</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for event in events %}
+        <tr>
+          <td>{{ event.started_at|date:"d.m.Y H:i" }}</td>
+          <td>
+            {{ event.workshop.name }}
+            {% if event.section %}<br><small class="muted">{{ event.section.name }}</small>{% endif %}
+          </td>
+          <td class="num">{{ event.duration_min }}</td>
+          <td><span class="badge {{ event.sync_mark }}">{{ event.get_sync_mark_display }}</span></td>
+          <td>{{ event.note|truncatechars:80|default:"—" }}</td>
+          <td>{{ event.get_source_display }}</td>
+          <td>
+            <form method="post" action="{% url 'integrations:review_accept' event.pk %}">
+              {% csrf_token %}
+              <button type="submit" class="button secondary">Подтвердить</button>
+            </form>
+          </td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="7" class="muted">Проверять нечего — всё синхронно.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% if total > events|length %}
+    <p class="muted">Показано {{ events|length }} из {{ total }} — остальные подтвердите, они подтянутся.</p>
+  {% endif %}
+{% endblock %}

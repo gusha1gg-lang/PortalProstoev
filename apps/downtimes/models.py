@@ -51,6 +51,13 @@ class DowntimeEvent(TimeStampedModel):
         SAARC = "saarc", "СААРЦ"
         FILE = "file", "Файл"
 
+    class SyncMark(models.TextChoices):
+        """Отметки о том, что запись изменилась/снята в источнике (никогда не удаляем)."""
+
+        CORRECTED = "corrected", "Исправлен"
+        ADJUSTED = "adjusted", "Скорректирован"
+        REMOVED = "removed", "Снят"
+
     # --- Когда ---
     started_at = models.DateTimeField("Начало")
     ended_at = models.DateTimeField("Окончание", null=True, blank=True)
@@ -115,6 +122,19 @@ class DowntimeEvent(TimeStampedModel):
     source = models.CharField("Источник", max_length=16, choices=Source.choices, default=Source.MANUAL)
     external_id = models.CharField("Внешний ID", max_length=128, null=True, blank=True)
     raw = models.JSONField("Исходные данные", null=True, blank=True)
+
+    # --- Синхронизация с источником (этап 11.6) ---
+    # Стабильный ключ строки-источника: по нему при повторном импорте находим ТУ ЖЕ запись,
+    # даже если её поправили (обычный отпечаток содержимого при правке менялся бы и плодил дубли).
+    source_key = models.CharField(
+        "Ключ строки-источника", max_length=64, null=True, blank=True, db_index=True
+    )
+    sync_mark = models.CharField(
+        "Отметка синхронизации", max_length=16, choices=SyncMark.choices, blank=True, default=""
+    )
+    # Требует проверки человеком (появляется в списке «на проверку»).
+    needs_review = models.BooleanField("На проверку", default=False, db_index=True)
+    synced_at = models.DateTimeField("Последняя синхронизация", null=True, blank=True)
 
     # --- Объединение в кейс (этап 4) ---
     # Пусто = простой считается сам по себе. Если задан — учитывается в кейсе, отдельно не считается.
@@ -343,3 +363,57 @@ class DowntimeCaseLog(TimeStampedModel):
 
     def __str__(self):
         return f"{self.get_action_display()} · {self.case_id} · {self.created_at:%d.%m.%Y %H:%M}"
+
+
+class ReportingPeriod(TimeStampedModel):
+    """Закрытый отчётный период (месяц).
+
+    После закрытия периода его простои не меняются: импорт из источника пропускает такие
+    строки, а ручные правки блокируются. Закрытие — только вручную (кнопка «Закрыть период»).
+    """
+
+    year = models.PositiveIntegerField("Год")
+    month = models.PositiveSmallIntegerField("Месяц")
+    closed_at = models.DateTimeField("Когда закрыт", auto_now_add=True)
+    closed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="closed_periods",
+        verbose_name="Кто закрыл",
+        null=True,
+        blank=True,
+    )
+    note = models.CharField("Примечание", max_length=255, blank=True)
+
+    class Meta:
+        verbose_name = "Закрытый период"
+        verbose_name_plural = "Закрытые периоды"
+        ordering = ["-year", "-month"]
+        constraints = [
+            models.UniqueConstraint(fields=["year", "month"], name="uniq_closed_period")
+        ]
+
+    @classmethod
+    def is_closed(cls, moment) -> bool:
+        """True, если момент попадает в закрытый период."""
+        if moment is None:
+            return False
+        return cls.objects.filter(year=moment.year, month=moment.month).exists()
+
+    @classmethod
+    def closed_filter(cls, column: str):
+        """Возвращает Q-выражение «строки, не попавшие в закрытые периоды» для поля-даты.
+
+        Используется, чтобы не трогать закрытые периоды при импорте/синхронизации.
+        """
+        closed = cls.objects.all()
+        q = Q(**{f"{column}__year__in": []})  # по умолчанию — пусто
+        for period in closed:
+            q |= Q(**{
+                f"{column}__year": period.year,
+                f"{column}__month": period.month,
+            })
+        return q
+
+    def __str__(self):
+        return f"{self.year:04d}-{self.month:02d}"

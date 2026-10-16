@@ -8,6 +8,7 @@ urlpatterns = [
     path("accounts/", include("apps.accounts.urls")),    # вход/выход
     path("sla/", include("apps.sla.urls")),              # расчёт потерь и SLA
     path("notifications/", include("apps.notifications.urls")),  # журнал уведомлений
+    path("sync/", include("apps.integrations.urls")),    # синхронизация простоев (этап 11.6)
     path("", include("apps.reports.urls")),              # дашборд (главная), SLA-отчёт, выгрузка
 ]
 

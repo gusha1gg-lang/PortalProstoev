@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+
+{% block title %}Синхронизация — PortalProstoev{% endblock %}
+
+{% block content %}
+  <h2>Синхронизация простоев из источника</h2>
+
+  <p class="muted">
+    Источник — СААРЦ. Портал только <b>читает</b> данные и ничего там не меняет.
+    Новые строки добавляются, исправленные и снятые <b>не удаляются</b>, а помечаются и
+    уходят <a href="{% url 'integrations:review' %}">на проверку</a>.
+    Закрытые периоды не изменяются при импорте.
+  </p>
+
+  <div class="sync-actions">
+    <div class="card">
+      <h3>Забрать сейчас</h3>
+      <p class="muted">
+        Ручной запуск за последние {{ window_days }} дн. Обычно данные забираются автоматически
+        каждый час (команда <code>sync_saarc</code> по расписанию).
+      </p>
+      <form method="post" action="{% url 'integrations:sync_now' %}">
+        {% csrf_token %}
+        <button type="submit">Забрать сейчас</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h3>Закрыть период</h3>
+      <p class="muted">
+        Закрытый месяц больше не меняется: ни импорт, ни синхронизация его не трогают.
+      </p>
+      <form method="post" action="{% url 'integrations:close_period' %}" class="sync-form">
+        {% csrf_token %}
+        <label>Год
+          <input type="number" name="year" value="{{ current_year }}" min="2000" max="2100" required>
+        </label>
+        <label>Месяц
+          <select name="month" required>
+            {% for number, name in months %}
+              <option value="{{ number }}"{% if number == current_month %} selected{% endif %}>{{ number }} — {{ name }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <button type="submit" class="button secondary">Закрыть период</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h3>На проверку</h3>
+      {% if review_count %}
+        <p><span class="badge removed">{{ review_count }}</span> записей требуют внимания —
+          источник их исправил или снял.</p>
+        <a class="button" href="{% url 'integrations:review' %}">Открыть список</a>
+      {% else %}
+        <p class="muted">Всё проверено, замечаний нет.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <h3>Запуски синхронизации</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>Время</th>
+        <th>Способ</th>
+        <th>Кто</th>
+        <th class="num">Создано</th>
+        <th class="num">Исправлено</th>
+        <th class="num">Скорр.</th>
+        <th class="num">Снято</th>
+        <th>Итог</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for run in runs %}
+        <tr>
+          <td>{{ run.started_at|date:"d.m.Y H:i" }}</td>
+          <td>{{ run.get_mode_display }}</td>
+          <td>{{ run.user|default:"—" }}</td>
+          <td class="num">{{ run.created }}</td>
+          <td class="num">{{ run.corrected }}</td>
+          <td class="num">{{ run.adjusted }}</td>
+          <td class="num">{{ run.removed }}</td>
+          <td>
+            {% if run.status == "error" %}
+              <span class="badge removed">Ошибка</span>
+            {% else %}
+              <span class="badge corrected">Завершено</span>
+            {% endif %}
+          </td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="8" class="muted">Синхронизаций пока не было.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% if runs %}
+    <p class="muted">Подробный отчёт по каждому запуску виден в <a href="/admin/integrations/syncrun/">админке</a>.</p>
+  {% endif %}
+
+  <h3>Закрытые периоды</h3>
+  <table>
+    <thead>
+      <tr><th>Период</th><th>Когда закрыт</th><th>Кто закрыл</th><th>Примечание</th></tr>
+    </thead>
+    <tbody>
+      {% for period in periods %}
+        <tr>
+          <td>{{ period.year }}-{{ period.month|stringformat:"02d" }}</td>
+          <td>{{ period.closed_at|date:"d.m.Y H:i" }}</td>
+          <td>{{ period.closed_by|default:"—" }}</td>
+          <td>{{ period.note|default:"—" }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="4" class="muted">Закрытых периодов нет.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% endblock %}

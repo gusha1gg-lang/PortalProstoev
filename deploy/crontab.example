@@ -6,8 +6,10 @@
 # Время — по серверу. Портал работает в часовом поясе Europe/Moscow.
 # ВНИМАНИЕ: команды ниже — пример. Итоговую частоту согласовать (question.md, В39).
 
-# Импорт простоев из источника — каждый час в рабочее время (пн–пт, 8:00–20:00).
-0 8-20 * * 1-5  cd /opt/portalprostoev && ./.venv/bin/python manage.py import_saarc >> /var/log/portalprostoev-import.log 2>&1
+# Синхронизация простоев из источника — каждый час (с перекрытием окна 2 ч, чтобы ничего не потерять).
+# Забирает новые записи, а изменённые/снятые помечает («Исправлен/Скорректирован/Снят») и отправляет «на проверку».
+# Закрытые периоды не изменяет.
+0 8-20 * * 1-5  cd /opt/portalprostoev && ./.venv/bin/python manage.py sync_saarc >> /var/log/portalprostoev-sync.log 2>&1
 
 # Проверка эскалаций по SLA — каждые 30 минут.
 */30 * * * *     cd /opt/portalprostoev && ./.venv/bin/python manage.py check_escalations >> /var/log/portalprostoev-notify.log 2>&1

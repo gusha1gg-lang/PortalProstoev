@@ -14,11 +14,11 @@ from datetime import datetime, time
 from django.utils import timezone
 
 from apps.catalog.models import Section, Unit, Workshop
-from apps.downtimes.models import DowntimeEvent
+from apps.downtimes.models import DowntimeEvent, ReportingPeriod
 from apps.downtimes.services import save_with_audit
 
 from .factory import get_saarc_source, get_omnitracker
-from .models import TicketLink
+from .models import SyncRun, TicketLink
 from .saarc import DIT_SERVICE
 from .omnitracker import Ticket
 
@@ -238,6 +238,226 @@ def _apply_update(event, data) -> bool:
     if changed:
         save_with_audit(event, user=None, comment="Обновление из СААРЦ")
     return changed
+
+
+# --- Синхронизация (этап 11.6) ---
+#
+# Отличие от обычного импорта: записи НИКОГДА не удаляются. Правки из источника
+# подтягиваются, но простой помечается («Исправлен»/«Скорректирован») и попадает
+# в список «на проверку». Исчезнувшие из источника строки помечаются «Снят».
+# Закрытые периоды не изменяются вовсе.
+
+# Стабильный ключ строки: меняется только если сам факт простоя «другой»
+# (время начала/цех/участок/агрегат/ФИО). Конец и примечание могут править — ключ остаётся.
+SOURCE_KEY_FIELDS = ("НАЧАЛО", "ЦЕХ", "УЧАСТОК", "АГГРЕГАТ", "ФИО")
+
+
+def source_key(row) -> str:
+    """Стабильный ключ строки-источника для поиска той же записи при повторном импорте."""
+    raw = "|".join(str(row.get(name, "")).strip() for name in SOURCE_KEY_FIELDS)
+    return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:32]
+
+
+@dataclass
+class SyncReport:
+    """Итоги одной синхронизации (для отчёта человеку)."""
+
+    total: int = 0
+    created: int = 0
+    corrected: int = 0  # «Исправлен» — поправили описание/ФИО в источнике
+    adjusted: int = 0   # «Скорректирован» — поправили время (конец) в источнике
+    removed: int = 0    # «Снят» — строки больше нет в источнике
+    unchanged: int = 0
+    skipped_closed: int = 0  # закрытый период — не трогаем
+    filtered_out: int = 0    # не наша служба
+    skipped_missing: int = 0  # нет в справочнике
+    problems: list[str] = field(default_factory=list)
+
+    @property
+    def review(self) -> int:
+        """Сколько записей ушло «на проверку» (исправлено + скорректировано + снято)."""
+        return self.corrected + self.adjusted + self.removed
+
+    def as_text(self) -> str:
+        lines = [
+            f"Строк из источника: {self.total}",
+            f"  создано: {self.created}",
+            f"  без изменений: {self.unchanged}",
+            f"  исправлено (на проверку): {self.corrected}",
+            f"  скорректировано (на проверку): {self.adjusted}",
+            f"  снято (на проверку): {self.removed}",
+            f"  не наша служба (отфильтровано): {self.filtered_out}",
+            f"  пропущено (закрытый период): {self.skipped_closed}",
+            f"  не найдено в справочнике: {self.skipped_missing}",
+        ]
+        if self.problems:
+            lines.append("Замечания:")
+            lines.extend(f"  - {problem}" for problem in self.problems)
+        return "\n".join(lines)
+
+
+def _detect_source_changes(event, data):
+    """
+    Сверяет уже загруженный простой с данными источника.
+
+    Возвращает (список изменившихся полей, отметка). Если ([], None) — изменений нет.
+    """
+    changed = []
+    if event.ended_at != data["ended_at"]:
+        changed.append("ended_at")
+    if (event.note or "") != (data["note"] or ""):
+        changed.append("note")
+    if (event.recorded_by_name or "") != (data["recorded_by_name"] or ""):
+        changed.append("recorded_by_name")
+    if not changed:
+        return [], None
+    # Описание/ФИО → «Исправлен»; только время → «Скорректирован».
+    if "note" in changed or "recorded_by_name" in changed:
+        return changed, DowntimeEvent.SyncMark.CORRECTED
+    return changed, DowntimeEvent.SyncMark.ADJUSTED
+
+
+def sync_downtimes(
+    since=None,
+    until=None,
+    mode=SyncRun.Mode.AUTO,
+    user=None,
+    create_missing=False,
+    source=None,
+    notify=True,
+):
+    """
+    Забирает простои из источника и применяет изменения, ничего не удаляя.
+
+    Правила (этап 11.6):
+      - новая строка → создаётся простой со статусом «Новый»;
+      - строку поправили → запись обновляется, помечается «Исправлен»/«Скорректирован»
+        и попадает в список «на проверку»;
+      - строку сняли в источнике → запись НЕ удаляется, а помечается «Снят»,
+        пишется в журнал и показывается «на проверку»;
+      - закрытые периоды не изменяются.
+
+    Каждый запуск фиксируется в журнале SyncRun. Возвращает (SyncReport, SyncRun).
+    """
+    source = source or get_saarc_source()
+    started = timezone.now()
+    run = SyncRun(mode=mode, started_at=started, since=since, until=until, user=user)
+
+    try:
+        rows = source.fetch_rows(since=since, until=until)
+    except Exception as exc:  # noqa: BLE001 — ошибка источника не должна ронять портал
+        run.status = SyncRun.Status.ERROR
+        run.finished_at = timezone.now()
+        run.report = f"Ошибка источника: {exc}"
+        run.save()
+        raise
+
+    report = SyncReport(total=len(rows))
+    seen_keys: set[str] = set()
+
+    for row in rows:
+        if not row_is_ours(row):
+            report.filtered_out += 1
+            continue
+
+        key = source_key(row)
+        if key in seen_keys:
+            continue  # дубль в самом источнике
+        seen_keys.add(key)
+
+        data, problems = _build_data(row, create_missing)
+        if data is None:
+            report.skipped_missing += 1
+            report.problems.extend(problems)
+            continue
+
+        # Закрытые периоды не изменяются — пропускаем и новые, и правленые строки.
+        if ReportingPeriod.is_closed(data["started_at"]):
+            report.skipped_closed += 1
+            continue
+
+        event = DowntimeEvent.objects.filter(
+            source=DowntimeEvent.Source.SAARC, source_key=key
+        ).first()
+
+        if event is None:
+            # Совместимость: запись могла быть загружена старым импортом (без source_key).
+            # Тогда находим её по отпечатку содержимого и «присваиваем» устойчивый ключ,
+            # чтобы не создать дубль и не нарушить уникальность (источник, внешний ID).
+            event = DowntimeEvent.objects.filter(
+                source=DowntimeEvent.Source.SAARC, external_id=row_fingerprint(row)
+            ).first()
+            if event is not None:
+                event.source_key = key
+
+        if event is None:
+            event = DowntimeEvent(
+                source=DowntimeEvent.Source.SAARC,
+                external_id=row_fingerprint(row),
+                source_key=key,
+                status=DowntimeEvent.Status.NEW,
+                raw=dict(row.data),
+                synced_at=started,
+                **data,
+            )
+            save_with_audit(event, user=None, comment="Импорт из СААРЦ")
+            report.created += 1
+            if notify:
+                _notify_new_incident(event)
+            continue
+
+        # Уже есть — сверяем и, если поправили, помечаем на проверку (не переписываем молча).
+        event.synced_at = started
+        changed, mark = _detect_source_changes(event, data)
+        if changed:
+            for name in changed:
+                setattr(event, name, data[name])
+            event.sync_mark = mark
+            event.needs_review = True
+            if mark == DowntimeEvent.SyncMark.CORRECTED:
+                report.corrected += 1
+            else:
+                report.adjusted += 1
+            save_with_audit(event, user=None, comment="Правка из источника (СААРЦ)")
+        else:
+            report.unchanged += 1
+            # source_key сохраняем: запись могла быть «усыновлена» старым импортом.
+            event.save(update_fields=["synced_at", "source_key", "updated_at"])
+
+    # Строки, бывшие в этом окне, но исчезнувшие из источника → «Снят» (не удаляем!).
+    # Окно обязано быть задано, чтобы по случайности не пометить всё как «снято».
+    if since is not None and until is not None:
+        removed_qs = (
+            DowntimeEvent.objects.filter(
+                source=DowntimeEvent.Source.SAARC,
+                source_key__isnull=False,
+                started_at__gte=since,
+                started_at__lt=until,
+            )
+            .exclude(source_key__in=seen_keys)
+            .exclude(status=DowntimeEvent.Status.CANCELED)
+        )
+        for event in removed_qs:
+            if ReportingPeriod.is_closed(event.started_at):
+                continue  # закрытый период не трогаем
+            event.sync_mark = DowntimeEvent.SyncMark.REMOVED
+            event.needs_review = True
+            event.synced_at = started
+            save_with_audit(event, user=None, comment="Снято в источнике (СААРЦ)")
+            report.removed += 1
+
+    run.total = report.total
+    run.created = report.created
+    run.corrected = report.corrected
+    run.adjusted = report.adjusted
+    run.removed = report.removed
+    run.skipped_closed = report.skipped_closed
+    run.filtered_out = report.filtered_out
+    run.skipped_missing = report.skipped_missing
+    run.finished_at = timezone.now()
+    run.report = report.as_text()
+    run.save()
+    return report, run
 
 
 # --- Тикеты OMNITRACKER ---

@@ -15,7 +15,7 @@
 | [`модуль-catalog.md`](модуль-catalog.md) | 2 | Справочники: цеха → участки → агрегаты |
 | [`модуль-downtimes.md`](модуль-downtimes.md) | 3–4 | Простои, журнал изменений, объединение в кейсы |
 | [`модуль-sla.md`](модуль-sla.md) | 5 | Потери, доступность, MTTR/MTBF, штрафы SLA |
-| [`модуль-integrations.md`](модуль-integrations.md) | 6 | Импорт простоев и тикеты (mock/live) |
+| [`модуль-integrations.md`](модуль-integrations.md) | 6, 11.6 | Импорт/синхронизация простоев, версии записей, тикеты (mock/live) |
 | [`модуль-reports.md`](модуль-reports.md) | 7 | Дашборд, KPI, SLA-отчёт, выгрузка |
 | [`модуль-notifications.md`](модуль-notifications.md) | 8 | Уведомления и эскалации по email |
 | [`модуль-accounts.md`](модуль-accounts.md) | 9 | Вход, роли и корпоративный вход (SSO) |

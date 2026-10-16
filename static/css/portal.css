@@ -176,6 +176,37 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 }
 .print-header { display: none; }
 
+/* Сообщения после действий (синхронизация, закрытие периода) */
+.messages { list-style: none; padding: 0; margin: 0 0 16px; }
+.message {
+    padding: 10px 14px;
+    border-radius: 8px;
+    border: 1px solid var(--line);
+    background: #eef4fc;
+    color: var(--accent-dark);
+    margin-bottom: 8px;
+    font-size: 14px;
+}
+.message.success { background: #eaf7ef; border-color: #b6e0c4; color: var(--ok); }
+.message.warning { background: #fff7e6; border-color: #f0d9a8; color: var(--warn); }
+.message.error { background: #fbeceb; border-color: #f0c4c0; color: var(--bad); }
+
+/* Синхронизация (этап 11.6) */
+.sync-actions { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; }
+.sync-actions .card { flex: 1 1 320px; }
+.sync-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; }
+.sync-form label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.sync-form input, .sync-form select {
+    font: inherit; padding: 7px 8px; border: 1px solid var(--line); border-radius: 6px;
+}
+.badge {
+    display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12px;
+    background: #eef2f7; color: var(--muted); border: 1px solid var(--line);
+}
+.badge.corrected { background: #eef4fc; color: var(--accent-dark); border-color: #c9dcf5; }
+.badge.adjusted { background: #fff7e6; color: var(--warn); border-color: #f0d9a8; }
+.badge.removed { background: #fbeceb; color: var(--bad); border-color: #f0c4c0; }
+
 @media print {
     .topbar, .filters, .no-print { display: none !important; }
     .print-header { display: block; }

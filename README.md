@@ -83,6 +83,8 @@ docker compose up -d
 # либо всё сразу: ./.venv/bin/python manage.py seed_demo
 # (необязательно) импорт простоев из БД с простоями в mock-режиме
 ./.venv/bin/python manage.py import_saarc
+# далее — синхронизация по расписанию (раз в час): новые + правки/снятия «на проверку»
+./.venv/bin/python manage.py sync_saarc
 
 # 6. Запуск
 ./.venv/bin/python manage.py runserver
@@ -91,7 +93,7 @@ docker compose up -d
 В разработке вход обычный, логин/пароль. Админ из шага 5, демо-пользователи — из `seed_users`
 (пароль `DevPortal2026!`): `operator`, `specialist`, `it_manager`, `management`.
 Дашборд — http://127.0.0.1:8000/, отчёт по потерям — /sla/, SLA-отчёт — /reports/sla/,
-журнал уведомлений — /notifications/, админка — /admin/.
+журнал уведомлений — /notifications/, синхронизация простоев — /sync/, админка — /admin/.
 Подробно — в [`docs/каркас.md`](docs/каркас.md) и [`docs/модуль-accounts.md`](docs/модуль-accounts.md).
 
 ## Тесты

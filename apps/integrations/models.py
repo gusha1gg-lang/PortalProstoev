@@ -1,9 +1,12 @@
 """
-Модели модуля «Интеграции»: связь простой/кейс ↔ тикет OMNITRACKER.
+Модели модуля «Интеграции»: связь простой/кейс ↔ тикет OMNITRACKER и журнал
+запусков синхронизации (SyncRun).
 
 Простой или кейс может быть связан с одним или несколькими тикетами (и наоборот),
-поэтому связь хранится отдельной таблицей.
+поэтому связь хранится отдельной таблицей. SyncRun хранит итог каждого запуска
+синхронизации с источником (этап 11.6).
 """
+from django.conf import settings
 from django.db import models
 from django.db.models import Q
 
@@ -69,3 +72,57 @@ class TicketLink(TimeStampedModel):
     def __str__(self):
         target = self.case or self.event
         return f"{self.external_id} ↔ {target}"
+
+
+class SyncRun(TimeStampedModel):
+    """Журнал запуска синхронизации: когда, каким способом и что получилось.
+
+    Каждый запуск (автосбор по расписанию или кнопка «Забрать сейчас») оставляет здесь
+    запись — видно, что и когда подтянулось, сколько строк создали/исправили/сняли.
+    """
+
+    class Mode(models.TextChoices):
+        AUTO = "auto", "Автосбор"
+        MANUAL = "manual", "Вручную"
+
+    class Status(models.TextChoices):
+        OK = "ok", "Завершено"
+        ERROR = "error", "Ошибка"
+
+    mode = models.CharField("Режим", max_length=8, choices=Mode.choices, default=Mode.AUTO)
+    status = models.CharField("Статус", max_length=8, choices=Status.choices, default=Status.OK)
+    started_at = models.DateTimeField("Начало")
+    finished_at = models.DateTimeField("Окончание", null=True, blank=True)
+    since = models.DateTimeField("Период с", null=True, blank=True)
+    until = models.DateTimeField("Период по", null=True, blank=True)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="sync_runs",
+        verbose_name="Кто запустил",
+        null=True,
+        blank=True,
+    )
+
+    total = models.IntegerField("Строк в источнике", default=0)
+    created = models.IntegerField("Создано", default=0)
+    corrected = models.IntegerField("Исправлено", default=0)
+    adjusted = models.IntegerField("Скорректировано", default=0)
+    removed = models.IntegerField("Снято", default=0)
+    skipped_closed = models.IntegerField("Закрытый период (пропущено)", default=0)
+    filtered_out = models.IntegerField("Не наша служба", default=0)
+    skipped_missing = models.IntegerField("Не найдено в справочнике", default=0)
+    report = models.TextField("Отчёт", blank=True)
+
+    class Meta:
+        verbose_name = "Запуск синхронизации"
+        verbose_name_plural = "Запуски синхронизации"
+        ordering = ["-started_at"]
+
+    @property
+    def changed(self):
+        """Сколько записей потребовало проверки (исправлено/скорректировано/снято)."""
+        return self.corrected + self.adjusted + self.removed
+
+    def __str__(self):
+        return f"{self.get_mode_display()} · {self.started_at:%d.%m.%Y %H:%M} · {self.get_status_display()}"

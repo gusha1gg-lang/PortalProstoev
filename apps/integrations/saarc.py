@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from django.conf import settings
+from django.utils import timezone
 
 # Ответственная служба «наша» — простои по вине ИТ-компании (прежнее название ОМК-ИТ).
 DIT_SERVICE = "ДИТ"
@@ -175,6 +176,14 @@ def _in_period(text, since, until) -> bool:
         moment = datetime.strptime(str(text)[:19], "%Y-%m-%d %H:%M:%S")
     except (ValueError, TypeError):
         return True
+    # Границы (since/until) бывают осознанными (timezone.now()), а строка источника —
+    # наивной. Сравнивать их напрямую нельзя (Python бросает TypeError), поэтому
+    # приводим момент к тому же типу, что и границы.
+    bounds_aware = (since and timezone.is_aware(since)) or (until and timezone.is_aware(until))
+    if bounds_aware and timezone.is_naive(moment):
+        moment = timezone.make_aware(moment)
+    elif not bounds_aware and timezone.is_aware(moment):
+        moment = timezone.localtime(moment).replace(tzinfo=None)
     if since and moment < since:
         return False
     if until and moment >= until:

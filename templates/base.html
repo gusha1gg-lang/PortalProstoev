@@ -16,6 +16,7 @@
                 <a href="{% url 'sla:report' %}">Потери и SLA</a>
                 <a href="{% url 'reports:sla_report' %}">SLA-отчёт</a>
                 <a href="{% url 'notifications:log' %}">Уведомления</a>
+                <a href="{% url 'integrations:sync' %}">Синхронизация</a>
                 {% if user.is_staff %}<a href="/admin/">Админка</a>{% endif %}
                 <span class="user">{{ user.get_username }}
                     {% for g in user.groups.all %}<span class="role">{{ g.name }}</span>{% endfor %}
@@ -30,6 +31,13 @@
         </nav>
     </header>
     <main class="container">
+        {% if messages %}
+            <ul class="messages">
+                {% for message in messages %}
+                    <li class="message {{ message.tags }}">{{ message }}</li>
+                {% endfor %}
+            </ul>
+        {% endif %}
         {% block content %}{% endblock %}
     </main>
     {% block extra_scripts %}{% endblock %}
