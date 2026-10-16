@@ -151,7 +151,7 @@ class Unit(TimeStampedModel):
 
 
 class ItFaultCategory(TimeStampedModel):
-    """Категория вины ИТ: сеть, серверы, ПО, интеграции, БД и т.д."""
+    """Категория вины ИТ: АРМ, Инфраструктура, ЦИС, КИС, «Не наша ИТ-служба» (см. question.md, В3)."""
 
     code = models.CharField("Код", max_length=32, unique=True)
     name = models.CharField("Название", max_length=255)
@@ -168,7 +168,7 @@ class ItFaultCategory(TimeStampedModel):
 
 
 class ItFaultSubcategory(TimeStampedModel):
-    """Подкатегория вины ИТ внутри категории."""
+    """Причина (подкатегория) вины ИТ внутри категории."""
 
     category = models.ForeignKey(
         ItFaultCategory, on_delete=models.PROTECT, related_name="subcategories", verbose_name="Категория"

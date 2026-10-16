@@ -124,25 +124,80 @@ WORKSHOP_UNITS = {
     ],
 }
 
+# Реальная классификация вины ИТ (2 уровня: категория -> причина).
+# Источник — файл руководителя, см. question.md, В3. Ведём её сами (правим в админке/портале).
 CATEGORIES = [
-    ("NET", "Сеть"),
-    ("SRV", "Серверы и инфраструктура"),
-    ("APP", "Прикладное ПО"),
-    ("INT", "Интеграции и обмен данными"),
-    ("DBA", "Базы данных"),
-    ("SEC", "Информационная безопасность"),
-    ("HUM", "Человеческий фактор"),
+    ("ARM", "АРМ"),
+    ("INFRA", "Инфраструктура"),
+    ("CIS", "ЦИС"),
+    ("KIS", "КИС"),
+    ("NOTIT", "Не наша ИТ-служба"),
 ]
 
+# Категория -> список причин (подкатегорий). Коды причин проставляем автоматически:
+# ARM-01, ARM-02 и т.д. Опознаём причины по НАЗВАНИЮ внутри категории.
 SUBCATEGORIES = {
-    "NET": [("NET-SW", "Сетевой коммутатор"), ("NET-UP", "Обрыв канала")],
-    "SRV": [("SRV-AV", "Отказ сервера"), ("SRV-VM", "Проблема виртуализации")],
-    "APP": [("APP-CR", "Падение приложения"), ("APP-SL", "Деградация скорости")],
-    "INT": [("INT-IF", "Сбой интеграции"), ("INT-DL", "Задержка обмена")],
-    "DBA": [("DBA-DW", "Отказ БД"), ("DBA-LK", "Блокировки")],
-    "SEC": [("SEC-AT", "Инцидент ИБ")],
-    "HUM": [("HUM-ER", "Ошибка оператора")],
+    "ARM": [
+        "Аппаратная неисправность",
+        "Действия пользователей",
+        "Настройки ПО",
+        "Настройки оборудования",
+        "Неизвестно",
+        "Быстродействие АРМ",
+        "Расходники",
+        "Обновление базового ПО",
+        "Сбой базового ПО",
+        "Учетные данные пользователя",
+        "Электропитание",
+        "Блокировка АВПО",
+        "Действия специалистов ИТ-службы",
+    ],
+    "INFRA": [
+        "Аппаратная неисправность",
+        "Блокировки данных в БД",
+        "Блокировки МЭ",
+        "Сбой ПО",
+        "Быстродействие ИТ-инфраструктуры",
+        "Технические работы",
+        "Электропитание",
+        "Сбой связи/соединения",
+        "Действия специалистов ИТ-службы",
+        "Настройки ПО",
+        "Неизвестно",
+    ],
+    "CIS": [
+        "Действия пользователей",
+        "Бизнес-логика ПО",
+        "Доработки/обновление ЦИС",
+        "Действия специалистов ИТ-службы",
+        "Программный сбой",
+        "Настройки ЦИС",
+        "Неизвестно",
+        "Некорректные данные",
+        "Учетные данные пользователя",
+        "Технические работы",
+        "Быстродействие ЦИС",
+    ],
+    "KIS": [
+        "Действия пользователей",
+        "Действия специалистов ИТ-службы",
+        "Неизвестно",
+        "Технические работы",
+        "Доработки/обновление КИС",
+        "Программный сбой",
+    ],
+    "NOTIT": [
+        "Действия пользователей",
+        "Неизвестно",
+        "Аппаратная неисправность",
+        "Настройки оборудования/ПО",
+        "Программный сбой",
+    ],
 }
+
+# Старая (учебная) классификация. Не удаляем — на неё могут ссылаться исторические
+# простои, — а помечаем неактивной. См. question.md, В3.
+OLD_CATEGORY_CODES = ["NET", "SRV", "APP", "INT", "DBA", "SEC", "HUM"]
 
 # Ключ: (предприятие, цех, участок) -> потери за час, ₽.
 RATES = {
@@ -192,12 +247,22 @@ class Command(BaseCommand):
                 )
 
         for code, name in CATEGORIES:
-            ItFaultCategory.objects.get_or_create(code=code, defaults={"name": name})
+            ItFaultCategory.objects.update_or_create(
+                code=code, defaults={"name": name, "is_active": True}
+            )
 
-        for category_code, subs in SUBCATEGORIES.items():
+        for category_code, reasons in SUBCATEGORIES.items():
             category = ItFaultCategory.objects.get(code=category_code)
-            for code, name in subs:
-                ItFaultSubcategory.objects.get_or_create(category=category, code=code, defaults={"name": name})
+            for index, name in enumerate(reasons, start=1):
+                ItFaultSubcategory.objects.get_or_create(
+                    category=category,
+                    name=name,
+                    defaults={"code": f"{category_code}-{index:02d}", "is_active": True},
+                )
+
+        # Старую классификацию оставляем в базе, но скрываем.
+        ItFaultCategory.objects.filter(code__in=OLD_CATEGORY_CODES).update(is_active=False)
+        ItFaultSubcategory.objects.filter(category__code__in=OLD_CATEGORY_CODES).update(is_active=False)
 
         for (enterprise_name, workshop_name, section_name), cost in RATES.items():
             section = Section.objects.get(
