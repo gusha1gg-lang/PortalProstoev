@@ -51,6 +51,22 @@ class StructureUniqueTests(TestCase):
         unit = Unit.objects.create(section=self.section, name="Агрегат-2")
         self.assertEqual(unit.criticality, Unit.Criticality.MEDIUM)
 
+    def test_unit_workshop_is_derived_from_section(self):
+        """Цех агрегата выводится из участка автоматически (В1)."""
+        unit = Unit.objects.create(section=self.section, name="Агрегат-3")
+        self.assertEqual(unit.workshop_id, self.workshop.id)
+
+    def test_sectionless_unit_is_attached_to_workshop(self):
+        """Общецеховой агрегат можно завести без участка — прямо на цех (В1)."""
+        unit = Unit.objects.create(workshop=self.workshop, name="Компрессор цеха")
+        self.assertIsNone(unit.section)
+        self.assertEqual(unit.workshop_id, self.workshop.id)
+
+    def test_sectionless_unit_name_unique_inside_workshop(self):
+        Unit.objects.create(workshop=self.workshop, name="Компрессор цеха")
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            Unit.objects.create(workshop=self.workshop, name="Компрессор цеха")
+
 
 class FaultCategoryTests(TestCase):
     def test_category_code_is_unique(self):

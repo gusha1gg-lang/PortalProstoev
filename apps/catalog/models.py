@@ -3,11 +3,14 @@
 
 Названия соответствуют реальным терминам предприятия:
     Предприятие (Enterprise) -> Цех (Workshop) -> Участок (Section) -> Агрегат (Unit).
+Агрегат может быть общецеховым — без участка (тогда он крепится прямо к цеху, см. question.md, В1).
 
 Портал обслуживает всю группу ОМК (много заводов, дивизионов и депо по России).
 Здесь только структура данных (модели = таблицы в БД). Логика расчётов — в модуле sla.
 """
+from django.core.exceptions import ValidationError
 from django.db import models
+from django.db.models import Q
 
 
 class TimeStampedModel(models.Model):
@@ -83,7 +86,7 @@ class Section(TimeStampedModel):
 
 
 class Unit(TimeStampedModel):
-    """Агрегат (единица оборудования) на участке."""
+    """Агрегат (единица оборудования). Обычно на участке; бывает общецеховой — прямо на цехе."""
 
     class Criticality(models.TextChoices):
         CRITICAL = "critical", "Особо важный"
@@ -91,8 +94,21 @@ class Unit(TimeStampedModel):
         MEDIUM = "medium", "Средняя"
         LOW = "low", "Низкая"
 
+    workshop = models.ForeignKey(
+        Workshop,
+        on_delete=models.PROTECT,
+        related_name="units",
+        verbose_name="Цех",
+        null=True,
+        blank=True,
+    )
     section = models.ForeignKey(
-        Section, on_delete=models.PROTECT, related_name="units", verbose_name="Участок"
+        Section,
+        on_delete=models.PROTECT,
+        related_name="units",
+        verbose_name="Участок",
+        null=True,
+        blank=True,
     )
     name = models.CharField("Название", max_length=255)
     code = models.CharField("Код (если есть)", max_length=32, blank=True)
@@ -104,10 +120,30 @@ class Unit(TimeStampedModel):
     class Meta:
         verbose_name = "Агрегат"
         verbose_name_plural = "Агрегаты"
-        ordering = ["section__name", "name"]
+        ordering = ["workshop__name", "section__name", "name"]
         constraints = [
-            models.UniqueConstraint(fields=["section", "name"], name="uniq_unit_name_per_section")
+            # Название агрегата уникально в пределах участка…
+            models.UniqueConstraint(fields=["section", "name"], name="uniq_unit_name_per_section"),
+            # …а для общецеховых (без участка) — в пределах цеха.
+            models.UniqueConstraint(
+                fields=["workshop", "name"],
+                condition=Q(section__isnull=True),
+                name="uniq_unit_name_per_workshop_without_section",
+            ),
         ]
+
+    def clean(self):
+        """Цех обязателен; если задан участок — цех должен совпадать с его цехом."""
+        if self.section_id is None and self.workshop_id is None:
+            raise ValidationError({"workshop": "Укажите цех или участок."})
+        if self.section_id and self.workshop_id and self.section.workshop_id != self.workshop_id:
+            raise ValidationError({"section": "Участок относится к другому цеху."})
+
+    def save(self, *args, **kwargs):
+        """Цех всегда выводим из участка, если участок задан."""
+        if self.section_id:
+            self.workshop_id = self.section.workshop_id
+        super().save(*args, **kwargs)
 
     def __str__(self):
         code = f" ({self.code})" if self.code else ""

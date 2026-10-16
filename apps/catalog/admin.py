@@ -41,6 +41,8 @@ class WorkshopAdmin(admin.ModelAdmin):
 class UnitInline(admin.TabularInline):
     model = Unit
     extra = 0
+    # Участок задаёт родитель (Section), цех выводится из участка — их не показываем.
+    fields = ("name", "code", "criticality", "is_active")
 
 
 @admin.register(Section)
@@ -53,8 +55,8 @@ class SectionAdmin(admin.ModelAdmin):
 
 @admin.register(Unit)
 class UnitAdmin(admin.ModelAdmin):
-    list_display = ("name", "code", "section", "criticality", "is_active")
-    list_filter = ("criticality", "section__workshop", "is_active")
+    list_display = ("name", "code", "workshop", "section", "criticality", "is_active")
+    list_filter = ("criticality", "workshop", "is_active")
     search_fields = ("name", "code")
 
 

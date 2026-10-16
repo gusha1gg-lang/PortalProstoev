@@ -116,6 +116,14 @@ UNITS = {
     ],
 }
 
+# Общецеховые агрегаты (без участка) — крепятся прямо к цеху (question.md, В1).
+WORKSHOP_UNITS = {
+    ('АО "ВМЗ"', "ТЭСЦ-4"): [
+        ("Компрессорная цеха", "high"),
+        ("Подстанция цеха", "critical"),
+    ],
+}
+
 CATEGORIES = [
     ("NET", "Сеть"),
     ("SRV", "Серверы и инфраструктура"),
@@ -171,6 +179,16 @@ class Command(BaseCommand):
             for name, criticality in units:
                 Unit.objects.get_or_create(
                     section=section, name=name, defaults={"criticality": criticality}
+                )
+
+        for (enterprise_name, workshop_name), units in WORKSHOP_UNITS.items():
+            workshop = Workshop.objects.get(enterprise__name=enterprise_name, name=workshop_name)
+            for name, criticality in units:
+                Unit.objects.get_or_create(
+                    workshop=workshop,
+                    section=None,
+                    name=name,
+                    defaults={"criticality": criticality},
                 )
 
         for code, name in CATEGORIES:
