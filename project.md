@@ -82,7 +82,7 @@ PortalProstoev/
 
 ## Бизнес-правила (кратко)
 - `duration_min = ended_at - started_at`
-- `losses = duration_hours × loss_rate(unit) + unproduced_tons × ton_margin` (ставки из справочников)
+- `losses = duration_hours × loss_rate(section)` (ставки из справочников)
 - `availability = (planned_time - downtime) / planned_time`
 - `MTTR = Σ duration / count(incidents)`; `MTBF = operating_time / count(failures)`
 - Штраф — только для событий с `fault_side = IT` и статусом `CONFIRMED`/`CLOSED`.

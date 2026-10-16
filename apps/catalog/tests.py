@@ -92,7 +92,6 @@ class LossRateTests(TestCase):
             section=self.section, cost_per_hour=Decimal("120000"), valid_from=date(2026, 1, 1)
         )
         self.assertIsNone(rate.valid_to)
-        self.assertEqual(rate.ton_margin, Decimal("0"))
 
     def test_str_mentions_rate_and_period(self):
         rate = LossRate.objects.create(

@@ -28,7 +28,6 @@ class ReportsTestBase(TestCase):
         LossRate.objects.create(
             section=cls.section,
             cost_per_hour=Decimal("120000"),
-            ton_margin=Decimal("3500"),
             valid_from="2025-01-01",
         )
         cls.category = ItFaultCategory.objects.create(code="net", name="Сеть")

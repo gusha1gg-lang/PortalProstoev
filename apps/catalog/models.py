@@ -163,7 +163,6 @@ class LossRate(TimeStampedModel):
         Section, on_delete=models.PROTECT, related_name="loss_rates", verbose_name="Участок"
     )
     cost_per_hour = models.DecimalField("Потери за час, ₽", max_digits=14, decimal_places=2)
-    ton_margin = models.DecimalField("Маржа за тонну, ₽", max_digits=14, decimal_places=2, default=0)
     valid_from = models.DateField("Действует с")
     valid_to = models.DateField("Действует по", null=True, blank=True)
     note = models.CharField("Примечание", max_length=255, blank=True)

@@ -3,7 +3,9 @@
 считали одинаково.
 
 Простыми словами:
-    потери = часы × ставка_участка + тонны × маржа_участка.
+    потери = часы × ставка_участка.
+
+Непроизведённые тонны хранятся и показываются справочно, но в деньгах не участвуют.
 
 Для кейса (несколько дублей) время по каждому участку берётся БЕЗ двойного счёта:
 сначала объединяются интервалы событий одного участка, потом умножается на его ставку.
@@ -94,7 +96,7 @@ def event_loss(event: DowntimeEvent) -> Loss:
     amount = Decimal("0")
     if rate is not None:
         hours = Decimal(event.duration_min) / Decimal(60)
-        amount = (hours * rate.cost_per_hour + tons * rate.ton_margin).quantize(MONEY)
+        amount = (hours * rate.cost_per_hour).quantize(MONEY)
 
     line = LossLine(section=event.section, minutes=event.duration_min, tons=tons, rate=rate, amount=amount)
     return Loss(
@@ -132,7 +134,7 @@ def case_loss(case) -> Loss:
 
         if rate is not None:
             hours = Decimal(minutes) / Decimal(60)
-            amount = (hours * rate.cost_per_hour + tons * rate.ton_margin).quantize(MONEY)
+            amount = (hours * rate.cost_per_hour).quantize(MONEY)
         else:
             amount = Decimal("0")
             missing = True
@@ -141,15 +143,11 @@ def case_loss(case) -> Loss:
         total_amount += amount
         total_tons += tons
 
-    # Тонны, заданные на карточке кейса, относим на участок с наибольшим временем.
+    # Тонны, заданные на карточке кейса, относим на участок с наибольшим временем — только справочно.
     case_tons = _tons(case.unproduced_tons)
     if case_tons and lines:
         primary = max(lines, key=lambda line: line.minutes)
-        if primary.rate is not None:
-            extra = (case_tons * primary.rate.ton_margin).quantize(MONEY)
-            total_amount += extra
-            primary.amount += extra
-            primary.tons += case_tons
+        primary.tons += case_tons
         total_tons += case_tons
 
     return Loss(

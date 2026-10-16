@@ -24,8 +24,8 @@ class LossTestBase(TestCase):
         cls.workshop = Workshop.objects.create(enterprise=cls.enterprise, name="ТЭСЦ-4")
         cls.section_a = Section.objects.create(workshop=cls.workshop, name="Участок отделки")
         cls.section_b = Section.objects.create(workshop=cls.workshop, name="Участок сварки")
-        LossRate.objects.create(section=cls.section_a, cost_per_hour=Decimal("120000"), ton_margin=Decimal("3500"), valid_from="2025-01-01")
-        LossRate.objects.create(section=cls.section_b, cost_per_hour=Decimal("90000"), ton_margin=Decimal("2800"), valid_from="2025-01-01")
+        LossRate.objects.create(section=cls.section_a, cost_per_hour=Decimal("120000"), valid_from="2025-01-01")
+        LossRate.objects.create(section=cls.section_b, cost_per_hour=Decimal("90000"), valid_from="2025-01-01")
 
     def make_event(self, section, start, end, tons="0", status=DowntimeEvent.Status.CONFIRMED):
         return DowntimeEvent.objects.create(
@@ -46,11 +46,13 @@ class EventLossTests(LossTestBase):
         # 0,5 часа × 120 000 = 60 000
         self.assertEqual(loss.amount, Decimal("60000.00"))
 
-    def test_event_loss_adds_tons(self):
+    def test_event_tons_do_not_affect_amount(self):
+        """Тонны больше не влияют на деньги: потери = часы × ставка (В2)."""
         event = self.make_event(self.section_a, "2026-10-10 15:00", "2026-10-10 15:30", tons="10")
         loss = event_loss(event)
-        # 0,5 × 120 000 + 10 × 3 500 = 60 000 + 35 000
-        self.assertEqual(loss.amount, Decimal("95000.00"))
+        # 0,5 часа × 120 000 = 60 000 (тонны в расчёте денег не участвуют).
+        self.assertEqual(loss.amount, Decimal("60000.00"))
+        self.assertEqual(loss.tons, Decimal("10"))
 
     def test_missing_rate_is_flagged(self):
         event = self.make_event(None, "2026-10-10 15:00", "2026-10-10 15:30")

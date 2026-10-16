@@ -80,7 +80,7 @@ class ItFaultSubcategoryAdmin(admin.ModelAdmin):
 
 @admin.register(LossRate)
 class LossRateAdmin(admin.ModelAdmin):
-    list_display = ("section", "cost_per_hour", "ton_margin", "valid_from", "valid_to")
+    list_display = ("section", "cost_per_hour", "valid_from", "valid_to")
     list_filter = ("section__workshop__enterprise", "section")
     search_fields = ("section__name",)
     date_hierarchy = "valid_from"

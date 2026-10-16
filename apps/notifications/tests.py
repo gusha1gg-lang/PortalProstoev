@@ -46,7 +46,6 @@ class NotificationTestBase(TestCase):
         LossRate.objects.create(
             section=cls.section,
             cost_per_hour=Decimal("120000"),
-            ton_margin=Decimal("0"),
             valid_from="2025-01-01",
         )
 

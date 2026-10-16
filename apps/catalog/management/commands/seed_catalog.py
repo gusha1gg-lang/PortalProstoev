@@ -136,15 +136,12 @@ SUBCATEGORIES = {
     "HUM": [("HUM-ER", "Ошибка оператора")],
 }
 
-# Ключ: (предприятие, цех, участок) -> (₽/час, маржа за тонну).
+# Ключ: (предприятие, цех, участок) -> потери за час, ₽.
 RATES = {
-    ('АО "ВМЗ"', "ТЭСЦ-4", "Участок отделки труб 1020"): (Decimal("120000.00"), Decimal("3500.00")),
-    ('АО "ВМЗ"', "ТЭСЦ-4", "Участок сварки труб 1020"): (Decimal("90000.00"), Decimal("2800.00")),
-    ('АО "ВМЗ"', "ТЭСЦ-4", "Участок формовки труб 1020"): (Decimal("120000.00"), Decimal("3500.00")),
-    ('АО "ВМЗ"', "ТЭСЦ-4", "Участок ремонта и гидроиспытаний 1020"): (
-        Decimal("150000.00"),
-        Decimal("4200.00"),
-    ),
+    ('АО "ВМЗ"', "ТЭСЦ-4", "Участок отделки труб 1020"): Decimal("120000.00"),
+    ('АО "ВМЗ"', "ТЭСЦ-4", "Участок сварки труб 1020"): Decimal("90000.00"),
+    ('АО "ВМЗ"', "ТЭСЦ-4", "Участок формовки труб 1020"): Decimal("120000.00"),
+    ('АО "ВМЗ"', "ТЭСЦ-4", "Участок ремонта и гидроиспытаний 1020"): Decimal("150000.00"),
 }
 
 
@@ -184,7 +181,7 @@ class Command(BaseCommand):
             for code, name in subs:
                 ItFaultSubcategory.objects.get_or_create(category=category, code=code, defaults={"name": name})
 
-        for (enterprise_name, workshop_name, section_name), (cost, ton) in RATES.items():
+        for (enterprise_name, workshop_name, section_name), cost in RATES.items():
             section = Section.objects.get(
                 workshop__enterprise__name=enterprise_name,
                 workshop__name=workshop_name,
@@ -193,7 +190,7 @@ class Command(BaseCommand):
             LossRate.objects.get_or_create(
                 section=section,
                 valid_from="2025-01-01",
-                defaults={"cost_per_hour": cost, "ton_margin": ton, "note": "Демо-ставка"},
+                defaults={"cost_per_hour": cost, "note": "Демо-ставка"},
             )
 
         self.stdout.write(
