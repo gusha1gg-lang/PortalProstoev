@@ -13,7 +13,7 @@
 from django.db import models
 from django.db.models import Q
 
-from apps.catalog.models import Enterprise, TimeStampedModel
+from apps.catalog.models import TimeStampedModel, Workshop
 from apps.downtimes.models import DowntimeCase, DowntimeEvent
 
 
@@ -33,12 +33,12 @@ class NotificationRule(TimeStampedModel):
     event = models.CharField("Событие", max_length=32, choices=Event.choices)
     channel = models.CharField("Канал", max_length=16, choices=Channel.choices, default=Channel.EMAIL)
 
-    # Пусто = правило действует для всех предприятий.
-    enterprise = models.ForeignKey(
-        Enterprise,
+    # Пусто = правило действует для всех цехов.
+    workshop = models.ForeignKey(
+        Workshop,
         on_delete=models.CASCADE,
         related_name="notification_rules",
-        verbose_name="Предприятие",
+        verbose_name="Цех",
         null=True,
         blank=True,
     )
@@ -56,7 +56,7 @@ class NotificationRule(TimeStampedModel):
         ordering = ["event", "name"]
 
     def __str__(self):
-        scope = self.enterprise.name if self.enterprise else "все предприятия"
+        scope = self.workshop.name if self.workshop else "все цеха"
         return f"{self.get_event_display()} · {scope}"
 
 

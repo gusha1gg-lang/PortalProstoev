@@ -161,14 +161,20 @@ def case_loss(case) -> Loss:
 
 # --- SLA: период, договоры, сводка ---
 
-def contract_for(enterprise, on_date):
-    """Договор SLA предприятия, действовавший на указанную дату."""
-    return (
-        SlaContract.objects.filter(enterprise=enterprise, is_active=True, valid_from__lte=on_date)
-        .filter(Q(valid_to__isnull=True) | Q(valid_to__gte=on_date))
-        .order_by("-valid_from")
-        .first()
-    )
+def contract_for(workshop, on_date):
+    """Договор SLA для цеха, действовавший на указанную дату.
+
+    Сначала ищем договор, привязанный именно к цеху; если такого нет — берём общий
+    (без цеха).
+    """
+    base = SlaContract.objects.filter(
+        is_active=True, valid_from__lte=on_date
+    ).filter(Q(valid_to__isnull=True) | Q(valid_to__gte=on_date))
+    if workshop is not None:
+        specific = base.filter(workshop=workshop).order_by("-valid_from").first()
+        if specific is not None:
+            return specific
+    return base.filter(workshop__isnull=True).order_by("-valid_from").first()
 
 
 def period_bounds(year: int, month: int):
@@ -181,16 +187,16 @@ def period_bounds(year: int, month: int):
     return start, end
 
 
-def incidents_for(enterprise, start, end, it_only=True):
+def incidents_for(workshop, start, end, it_only=True):
     """
-    Инциденты предприятия за период: кейсы (по одному на кейс) и одиночные простои.
+    Инциденты цеха за период: кейсы (по одному на кейс) и одиночные простои.
 
     Учитываем статусы «Подтверждён»/«Закрыт». При it_only=True — только вину ИТ
     (так считаются потери и SLA); при it_only=False — все службы (нужно для показателя
     «доля простоев по вине ИТ»).
     """
     filters = {
-        "workshop__enterprise": enterprise,
+        "workshop": workshop,
         "status__in": INCIDENT_STATUSES,
         "started_at__gte": start,
         "started_at__lt": end,
@@ -222,8 +228,7 @@ def incidents_for(enterprise, start, end, it_only=True):
                     "loss": case_loss(case),
                     "category": category or "Без категории",
                     "side": case.get_fault_side_display(),
-                    "enterprise": enterprise.name,
-                    "workshop": event.workshop.name,
+                    "workshop": workshop.name,
                 }
             )
         else:
@@ -237,19 +242,18 @@ def incidents_for(enterprise, start, end, it_only=True):
                     "loss": event_loss(event),
                     "category": category or "Без категории",
                     "side": event.get_fault_side_display(),
-                    "enterprise": enterprise.name,
-                    "workshop": event.workshop.name,
+                    "workshop": workshop.name,
                 }
             )
     return incidents
 
 
-def sla_summary(enterprise, year: int, month: int) -> dict:
-    """Сводка по предприятию за месяц: потери, доступность, MTTR/MTBF, штраф."""
+def sla_summary(workshop, year: int, month: int) -> dict:
+    """Сводка по цеху за месяц: потери, доступность, MTTR/MTBF, штраф."""
     start, end = period_bounds(year, month)
     period_min = int((end - start).total_seconds() // 60)
 
-    incidents = incidents_for(enterprise, start, end)
+    incidents = incidents_for(workshop, start, end)
     downtime_min = sum(i["duration_min"] for i in incidents)
     count = len(incidents)
 
@@ -264,7 +268,7 @@ def sla_summary(enterprise, year: int, month: int) -> dict:
     mttr = Decimal(downtime_min) / Decimal(count) if count else Decimal("0")
     mtbf = Decimal(period_min - downtime_min) / Decimal(count) if count else Decimal("0")
 
-    contract = contract_for(enterprise, start.date())
+    contract = contract_for(workshop, start.date())
     penalty = Decimal("0")
     allowed_min = None
     if contract is not None:
@@ -275,7 +279,7 @@ def sla_summary(enterprise, year: int, month: int) -> dict:
             penalty = (over / Decimal(60) * contract.penalty_per_hour).quantize(MONEY)
 
     return {
-        "enterprise": enterprise,
+        "workshop": workshop,
         "period_min": period_min,
         "incidents": incidents,
         "incident_count": count,

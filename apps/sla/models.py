@@ -1,7 +1,7 @@
 """
 Модуль «Потери и SLA».
 
-Хранит договоры SLA (целевая доступность и штраф) по предприятиям.
+Хранит договоры SLA (целевая доступность и штраф) по цехам.
 Сами расчёты потерь, доступности, MTTR/MTBF — в `services.py` (одно место на весь портал).
 """
 from decimal import Decimal
@@ -9,20 +9,23 @@ from decimal import Decimal
 from django.db import models
 from django.db.models import F, Q
 
-from apps.catalog.models import Enterprise, TimeStampedModel
+from apps.catalog.models import TimeStampedModel, Workshop
 
 
 class SlaContract(TimeStampedModel):
     """
-    Договор SLA по предприятию. Версионируется по датам: для расчёта берётся
-    договор, действовавший на начало периода.
+    Договор SLA по цеху. Версионируется по датам: для расчёта берётся
+    договор, действовавший на начало периода. Если цех не задан — договор
+    действует для всех цехов (общий).
     """
 
-    enterprise = models.ForeignKey(
-        Enterprise,
+    workshop = models.ForeignKey(
+        Workshop,
         on_delete=models.PROTECT,
         related_name="sla_contracts",
-        verbose_name="Предприятие",
+        verbose_name="Цех",
+        null=True,
+        blank=True,
     )
     name = models.CharField("Название", max_length=255)
     target_availability = models.DecimalField(
@@ -39,7 +42,7 @@ class SlaContract(TimeStampedModel):
     class Meta:
         verbose_name = "Договор SLA"
         verbose_name_plural = "Договоры SLA"
-        ordering = ["enterprise__name", "-valid_from"]
+        ordering = ["workshop__name", "-valid_from"]
         constraints = [
             # Дата окончания не может быть раньше даты начала.
             models.CheckConstraint(
@@ -54,4 +57,5 @@ class SlaContract(TimeStampedModel):
         ]
 
     def __str__(self):
-        return f"{self.enterprise.name}: SLA {self.target_availability}%"
+        scope = self.workshop.name if self.workshop else "Все цеха"
+        return f"{scope}: SLA {self.target_availability}%"

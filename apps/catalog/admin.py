@@ -2,7 +2,6 @@
 from django.contrib import admin
 
 from .models import (
-    Enterprise,
     ItFaultCategory,
     ItFaultSubcategory,
     LossRate,
@@ -12,19 +11,6 @@ from .models import (
 )
 
 
-class WorkshopInline(admin.TabularInline):
-    model = Workshop
-    extra = 0
-
-
-@admin.register(Enterprise)
-class EnterpriseAdmin(admin.ModelAdmin):
-    list_display = ("name", "code", "is_active")
-    list_filter = ("is_active",)
-    search_fields = ("name", "code")
-    inlines = [WorkshopInline]
-
-
 class SectionInline(admin.TabularInline):
     model = Section
     extra = 0
@@ -32,8 +18,8 @@ class SectionInline(admin.TabularInline):
 
 @admin.register(Workshop)
 class WorkshopAdmin(admin.ModelAdmin):
-    list_display = ("name", "code", "enterprise", "is_active")
-    list_filter = ("enterprise", "is_active")
+    list_display = ("name", "code", "is_active")
+    list_filter = ("is_active",)
     search_fields = ("name", "code")
     inlines = [SectionInline]
 
@@ -48,7 +34,7 @@ class UnitInline(admin.TabularInline):
 @admin.register(Section)
 class SectionAdmin(admin.ModelAdmin):
     list_display = ("name", "code", "workshop", "is_active")
-    list_filter = ("workshop__enterprise", "workshop", "is_active")
+    list_filter = ("workshop", "is_active")
     search_fields = ("name", "code")
     inlines = [UnitInline]
 
@@ -83,6 +69,6 @@ class ItFaultSubcategoryAdmin(admin.ModelAdmin):
 @admin.register(LossRate)
 class LossRateAdmin(admin.ModelAdmin):
     list_display = ("section", "cost_per_hour", "valid_from", "valid_to")
-    list_filter = ("section__workshop__enterprise", "section")
+    list_filter = ("section__workshop", "section")
     search_fields = ("section__name",)
     date_hierarchy = "valid_from"

@@ -21,7 +21,7 @@
   <table border="1" cellpadding="6" cellspacing="0">
     <thead>
       <tr>
-        <th>Предприятие</th>
+        <th>Цех</th>
         <th>Инцидентов</th>
         <th>Простои, мин</th>
         <th>Доступность, %</th>
@@ -34,7 +34,7 @@
     <tbody>
       {% for row in rows %}
         <tr>
-          <td>{{ row.enterprise.name }}</td>
+          <td>{{ row.workshop.name }}</td>
           <td>{{ row.incident_count }}</td>
           <td>{{ row.downtime_min }}</td>
           <td>
@@ -68,7 +68,7 @@
   <h3>Инциденты за период</h3>
   {% for row in rows %}
     {% if row.incidents %}
-      <h4>{{ row.enterprise.name }}</h4>
+      <h4>{{ row.workshop.name }}</h4>
       <table border="1" cellpadding="6" cellspacing="0">
         <thead>
           <tr>

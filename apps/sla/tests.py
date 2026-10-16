@@ -5,7 +5,7 @@ from decimal import Decimal
 from django.test import TestCase
 from django.utils import timezone
 
-from apps.catalog.models import Enterprise, LossRate, Section, Unit, Workshop
+from apps.catalog.models import LossRate, Section, Unit, Workshop
 from apps.downtimes.models import DowntimeEvent
 from apps.downtimes.services import create_case_from_events
 
@@ -20,8 +20,7 @@ def dt(text):
 class LossTestBase(TestCase):
     @classmethod
     def setUpTestData(cls):
-        cls.enterprise = Enterprise.objects.create(name='Тестовый завод')
-        cls.workshop = Workshop.objects.create(enterprise=cls.enterprise, name="ТЭСЦ-4")
+        cls.workshop = Workshop.objects.create(name="ТЭСЦ-4")
         cls.section_a = Section.objects.create(workshop=cls.workshop, name="Участок отделки")
         cls.section_b = Section.objects.create(workshop=cls.workshop, name="Участок сварки")
         LossRate.objects.create(section=cls.section_a, cost_per_hour=Decimal("120000"), valid_from="2025-01-01")
@@ -84,7 +83,7 @@ class CaseLossTests(LossTestBase):
 class AvailabilityTests(LossTestBase):
     def test_availability_and_mttr(self):
         self.make_event(self.section_a, "2026-10-10 15:00", "2026-10-10 15:30")  # 30 мин
-        summary = sla_summary(self.enterprise, 2026, 10)
+        summary = sla_summary(self.workshop, 2026, 10)
         self.assertEqual(summary["incident_count"], 1)
         self.assertEqual(summary["downtime_min"], 30)
         self.assertEqual(summary["mttr_min"], Decimal("30.0"))
@@ -99,6 +98,6 @@ class AvailabilityTests(LossTestBase):
             "2026-10-10 15:30",
             status=DowntimeEvent.Status.CANCELED,
         )
-        summary = sla_summary(self.enterprise, 2026, 10)
+        summary = sla_summary(self.workshop, 2026, 10)
         self.assertEqual(summary["incident_count"], 0)
         self.assertEqual(summary["availability"], Decimal("100.00"))

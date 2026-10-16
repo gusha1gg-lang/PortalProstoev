@@ -6,7 +6,7 @@ from django.db import IntegrityError, transaction
 from django.test import TestCase
 from django.utils import timezone
 
-from apps.catalog.models import Enterprise, ItFaultCategory, Section, Workshop
+from apps.catalog.models import ItFaultCategory, Section, Workshop
 
 from .models import DowntimeCase, DowntimeCaseLog, DowntimeEvent, DowntimeEventLog
 from .services import (
@@ -81,8 +81,7 @@ class UnionDurationTests(TestCase):
 class DowntimeTestBase(TestCase):
     @classmethod
     def setUpTestData(cls):
-        cls.enterprise = Enterprise.objects.create(name="Тестовый завод")
-        cls.workshop = Workshop.objects.create(enterprise=cls.enterprise, name="ТЭСЦ-4")
+        cls.workshop = Workshop.objects.create(name="ТЭСЦ-4")
         cls.section = Section.objects.create(workshop=cls.workshop, name="Участок отделки")
         cls.category = ItFaultCategory.objects.create(code="net", name="Сеть")
         cls.user = get_user_model().objects.create_user(username="tester", password="x")
@@ -243,9 +242,8 @@ class DuplicateCandidateTests(DowntimeTestBase):
         self.make_event("2026-10-01 14:00", "2026-10-01 14:10", note="ДМАП")  # +4 часа
         self.assertEqual(find_duplicate_candidates(), [])
 
-    def test_different_enterprise_is_not_a_group(self):
-        other = Enterprise.objects.create(name="Другой завод")
-        other_workshop = Workshop.objects.create(enterprise=other, name="Цех-1")
+    def test_different_workshop_is_not_a_group(self):
+        other_workshop = Workshop.objects.create(name="Цех-1")
         self.make_event("2026-10-01 10:00", "2026-10-01 10:10", note="ДМАП")
         self.make_event("2026-10-01 10:30", "2026-10-01 10:40", note="ДМАП", workshop=other_workshop)
         self.assertEqual(find_duplicate_candidates(), [])

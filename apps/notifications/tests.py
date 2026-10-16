@@ -7,7 +7,7 @@ from django.core.management import call_command
 from django.test import TestCase
 from django.utils import timezone
 
-from apps.catalog.models import Enterprise, LossRate, Section, Workshop
+from apps.catalog.models import LossRate, Section, Workshop
 from apps.downtimes.models import DowntimeEvent
 from apps.downtimes.services import save_with_audit
 from apps.sla.models import SlaContract
@@ -28,10 +28,10 @@ def dt(text):
     return timezone.make_aware(datetime.strptime(text, "%Y-%m-%d %H:%M"))
 
 
-def make_rule(event, enterprise=None, threshold=80, email="user@example.local"):
+def make_rule(event, workshop=None, threshold=80, email="user@example.local"):
     """Создаёт правило с одним получателем и возвращает его."""
     rule = NotificationRule.objects.create(
-        name=f"Правило {event}", event=event, enterprise=enterprise, threshold_percent=threshold
+        name=f"Правило {event}", event=event, workshop=workshop, threshold_percent=threshold
     )
     NotificationRecipient.objects.create(rule=rule, email=email)
     return rule
@@ -40,8 +40,7 @@ def make_rule(event, enterprise=None, threshold=80, email="user@example.local"):
 class NotificationTestBase(TestCase):
     @classmethod
     def setUpTestData(cls):
-        cls.enterprise = Enterprise.objects.create(name="Тестовый завод")
-        cls.workshop = Workshop.objects.create(enterprise=cls.enterprise, name="ТЭСЦ-4")
+        cls.workshop = Workshop.objects.create(name="ТЭСЦ-4")
         cls.section = Section.objects.create(workshop=cls.workshop, name="Участок отделки")
         LossRate.objects.create(
             section=cls.section,
@@ -92,15 +91,15 @@ class SendRuleTests(NotificationTestBase):
 
 
 class RuleSelectionTests(NotificationTestBase):
-    def test_enterprise_scope(self):
+    def test_workshop_scope(self):
         rule_all = make_rule(NotificationRule.Event.NEW_INCIDENT)
-        rule_one = make_rule(NotificationRule.Event.NEW_INCIDENT, enterprise=self.enterprise)
-        other = Enterprise.objects.create(name="Другой завод")
+        rule_one = make_rule(NotificationRule.Event.NEW_INCIDENT, workshop=self.workshop)
+        other = Workshop.objects.create(name="Другой цех")
 
-        for_enterprise = {r.pk for r in rules_for(NotificationRule.Event.NEW_INCIDENT, self.enterprise)}
+        for_workshop = {r.pk for r in rules_for(NotificationRule.Event.NEW_INCIDENT, self.workshop)}
         for_other = {r.pk for r in rules_for(NotificationRule.Event.NEW_INCIDENT, other)}
 
-        self.assertEqual(for_enterprise, {rule_all.pk, rule_one.pk})
+        self.assertEqual(for_workshop, {rule_all.pk, rule_one.pk})
         self.assertEqual(for_other, {rule_all.pk})
 
 
@@ -116,7 +115,7 @@ class NewIncidentTests(NotificationTestBase):
 class EscalationTests(NotificationTestBase):
     def _contract(self, target, penalty="50000"):
         SlaContract.objects.create(
-            enterprise=self.enterprise,
+            workshop=self.workshop,
             name="Договор",
             target_availability=Decimal(target),
             penalty_per_hour=Decimal(penalty),
@@ -189,7 +188,7 @@ class DigestAndCommandsTests(NotificationTestBase):
 
     def _contract_helper(self):
         SlaContract.objects.create(
-            enterprise=self.enterprise,
+            workshop=self.workshop,
             name="Договор",
             target_availability=Decimal("99.99"),
             penalty_per_hour=Decimal("50000"),

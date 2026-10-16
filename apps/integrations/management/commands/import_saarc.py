@@ -29,7 +29,7 @@ class Command(BaseCommand):
         parser.add_argument(
             "--create-missing",
             action="store_true",
-            help="Создавать недостающие участки/агрегаты (цех создавать нельзя — нужно предприятие)",
+            help="Создавать недостающие участки/агрегаты (цех создавать нельзя — он верхний уровень)",
         )
         parser.add_argument(
             "--update",

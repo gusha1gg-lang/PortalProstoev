@@ -6,7 +6,6 @@ from django.db import IntegrityError, transaction
 from django.test import TestCase
 
 from .models import (
-    Enterprise,
     ItFaultCategory,
     ItFaultSubcategory,
     LossRate,
@@ -21,22 +20,13 @@ class StructureUniqueTests(TestCase):
 
     @classmethod
     def setUpTestData(cls):
-        cls.enterprise = Enterprise.objects.create(name="Завод А")
-        cls.other_enterprise = Enterprise.objects.create(name="Завод Б")
-        cls.workshop = Workshop.objects.create(enterprise=cls.enterprise, name="Цех-1")
+        cls.workshop = Workshop.objects.create(name="Цех-1")
         cls.section = Section.objects.create(workshop=cls.workshop, name="Участок-1")
 
-    def test_enterprise_name_is_unique(self):
+    def test_workshop_name_is_unique(self):
+        """Уровень «Предприятие» убран — название цеха уникально везде."""
         with self.assertRaises(IntegrityError), transaction.atomic():
-            Enterprise.objects.create(name="Завод А")
-
-    def test_workshop_name_unique_inside_enterprise(self):
-        with self.assertRaises(IntegrityError), transaction.atomic():
-            Workshop.objects.create(enterprise=self.enterprise, name="Цех-1")
-
-    def test_same_workshop_name_allowed_in_another_enterprise(self):
-        duplicated = Workshop.objects.create(enterprise=self.other_enterprise, name="Цех-1")
-        self.assertEqual(duplicated.name, "Цех-1")
+            Workshop.objects.create(name="Цех-1")
 
     def test_section_name_unique_inside_workshop(self):
         with self.assertRaises(IntegrityError), transaction.atomic():
@@ -90,8 +80,7 @@ class FaultCategoryTests(TestCase):
 class LossRateTests(TestCase):
     @classmethod
     def setUpTestData(cls):
-        enterprise = Enterprise.objects.create(name="Завод")
-        workshop = Workshop.objects.create(enterprise=enterprise, name="Цех")
+        workshop = Workshop.objects.create(name="Цех")
         cls.section = Section.objects.create(workshop=workshop, name="Участок")
 
     def test_valid_to_before_valid_from_is_rejected(self):
@@ -119,14 +108,12 @@ class LossRateTests(TestCase):
 
 
 class DisplayTests(TestCase):
-    def test_workshop_str_includes_enterprise(self):
-        enterprise = Enterprise.objects.create(name="Завод А")
-        workshop = Workshop.objects.create(enterprise=enterprise, name="Цех-1")
-        self.assertEqual(str(workshop), "Завод А / Цех-1")
+    def test_workshop_str_is_its_name(self):
+        workshop = Workshop.objects.create(name="Цех-1")
+        self.assertEqual(str(workshop), "Цех-1")
 
     def test_unit_str_includes_code_when_present(self):
-        enterprise = Enterprise.objects.create(name="Завод А")
-        workshop = Workshop.objects.create(enterprise=enterprise, name="Цех-1")
+        workshop = Workshop.objects.create(name="Цех-1")
         section = Section.objects.create(workshop=workshop, name="Участок-1")
         unit = Unit.objects.create(section=section, name="Агрегат-1", code="A-1")
         self.assertEqual(str(unit), "Агрегат-1 (A-1)")

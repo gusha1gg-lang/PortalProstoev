@@ -2,8 +2,8 @@
 Сборка данных для дашбордов и отчётов.
 
 Здесь нет новых формул: потери, доступность, MTTR/MTBF и штрафы считает модуль `sla`
-(см. apps/sla/services.py). Этот модуль только складывает результаты по предприятиям
-и готовит срезы (по категориям, по предприятиям, по месяцам) для страниц и выгрузки.
+(см. apps/sla/services.py). Этот модуль только складывает результаты по цехам
+и готовит срезы (по категориям, по цехам, по месяцам) для страниц и выгрузки.
 
 Так формулы живут в одном месте — отчёт для руководства, дашборд и страница SLA
 всегда показывают одинаковые цифры.
@@ -11,18 +11,18 @@
 from collections import defaultdict
 from decimal import Decimal
 
-from apps.catalog.models import Enterprise
+from apps.catalog.models import Workshop
 from apps.sla.services import incidents_for, period_bounds, sla_summary
 
 MONEY = Decimal("0.01")
 ZERO = Decimal("0")
 
 
-def _enterprises(enterprise=None):
-    """Список активных предприятий (или одно выбранное)."""
-    queryset = Enterprise.objects.filter(is_active=True)
-    if enterprise is not None:
-        queryset = queryset.filter(pk=enterprise.pk)
+def _workshops(workshop=None):
+    """Список активных цехов (или один выбранный)."""
+    queryset = Workshop.objects.filter(is_active=True)
+    if workshop is not None:
+        queryset = queryset.filter(pk=workshop.pk)
     return list(queryset.order_by("name"))
 
 
@@ -38,23 +38,23 @@ def _percent(part, whole):
     return (Decimal(part) / Decimal(whole) * 100).quantize(MONEY)
 
 
-def _all_downtime_min(enterprise, start, end):
+def _all_downtime_min(workshop, start, end):
     """Простои всех служб (не только ИТ) за период — для показателя «доля по вине ИТ»."""
-    return sum(i["duration_min"] for i in incidents_for(enterprise, start, end, it_only=False))
+    return sum(i["duration_min"] for i in incidents_for(workshop, start, end, it_only=False))
 
 
-def kpi(year, month, enterprise=None):
+def kpi(year, month, workshop=None):
     """
     Главные показатели за месяц.
 
-    Возвращает словарь: итоги по всем выбранным предприятиям + построчные данные
-    (по предприятию) + общий список инцидентов (для топ-причин и выгрузки).
+    Возвращает словарь: итоги по всем выбранным цехам + построчные данные
+    (по цеху) + общий список инцидентов (для топ-причин и выгрузки).
     """
     start, end = period_bounds(year, month)
     period_min = int((end - start).total_seconds() // 60)
 
-    enterprises = _enterprises(enterprise)
-    rows = [sla_summary(item, year, month) for item in enterprises]
+    workshops = _workshops(workshop)
+    rows = [sla_summary(item, year, month) for item in workshops]
 
     total_period = period_min * len(rows)
     downtime = sum(r["downtime_min"] for r in rows)
@@ -63,7 +63,7 @@ def kpi(year, month, enterprise=None):
     penalty = _sum(r["penalty"] for r in rows)
     incidents = [i for r in rows for i in r["incidents"]]
 
-    all_downtime = sum(_all_downtime_min(item, start, end) for item in enterprises)
+    all_downtime = sum(_all_downtime_min(item, start, end) for item in workshops)
 
     return {
         "year": year,
@@ -104,7 +104,7 @@ def top_categories(incidents, limit=8):
     return result[:limit]
 
 
-def monthly_series(year, month, enterprise=None, months=6):
+def monthly_series(year, month, workshop=None, months=6):
     """
     Ряд по месяцам (для графика): потери и время простоев за последние `months` месяцев,
     заканчивая указанным месяцем. Идём от старого к новому.
@@ -121,7 +121,7 @@ def monthly_series(year, month, enterprise=None, months=6):
 
     series = []
     for period_year, period_month in periods:
-        data = kpi(period_year, period_month, enterprise=enterprise)
+        data = kpi(period_year, period_month, workshop=workshop)
         series.append(
             {
                 "label": f"{period_month:02d}.{period_year}",
@@ -133,11 +133,11 @@ def monthly_series(year, month, enterprise=None, months=6):
     return series
 
 
-def enterprise_breakdown(rows, limit=8):
-    """Разбивка по предприятиям (для графика): берём предприятия с ненулевым временем."""
+def workshop_breakdown(rows, limit=8):
+    """Разбивка по цехам (для графика): берём цеха с ненулевым временем."""
     items = [
         {
-            "name": row["enterprise"].name,
+            "name": row["workshop"].name,
             "downtime_min": row["downtime_min"],
             "loss": float(row["total_loss"]),
             "incident_count": row["incident_count"],
@@ -149,15 +149,15 @@ def enterprise_breakdown(rows, limit=8):
     return items[:limit]
 
 
-def incident_rows(year, month, enterprise=None):
+def incident_rows(year, month, workshop=None):
     """Плоский список инцидентов за период — для выгрузки в файл (CSV)."""
-    data = kpi(year, month, enterprise=enterprise)
+    data = kpi(year, month, workshop=workshop)
     rows = []
     for incident in data["incidents"]:
         rows.append(
             {
                 "period": f"{year:04d}-{month:02d}",
-                "enterprise": incident["enterprise"],
+                "workshop": incident["workshop"],
                 "kind": "Кейс" if incident["kind"] == "case" else "Простой",
                 "when": incident["when"],
                 "title": incident["title"],

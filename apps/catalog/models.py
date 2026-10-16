@@ -2,11 +2,12 @@
 Справочники портала: производственная структура, категории вины ИТ, ставки потерь.
 
 Названия соответствуют реальным терминам предприятия:
-    Предприятие (Enterprise) -> Цех (Workshop) -> Участок (Section) -> Агрегат (Unit).
+    Цех (Workshop) -> Участок (Section) -> Агрегат (Unit).
 Агрегат может быть общецеховым — без участка (тогда он крепится прямо к цеху, см. question.md, В1).
 
-Портал обслуживает всю группу ОМК (много заводов, дивизионов и депо по России).
-Здесь только структура данных (модели = таблицы в БД). Логика расчётов — в модуле sla.
+Уровень «Предприятие» (Enterprise) убран полностью — верхний уровень структуры это цех
+(см. `docs/план.md`, Этап 11.6). Портал обслуживает все наши цеха. Здесь только структура
+данных (модели = таблицы в БД). Логика расчётов — в модуле sla.
 """
 from django.core.exceptions import ValidationError
 from django.db import models
@@ -23,43 +24,20 @@ class TimeStampedModel(models.Model):
         abstract = True
 
 
-class Enterprise(TimeStampedModel):
-    """Предприятие / завод / филиал группы ОМК — верхний уровень структуры."""
+class Workshop(TimeStampedModel):
+    """Цех (или объект) — верхний уровень структуры."""
 
     name = models.CharField("Название", max_length=255, unique=True)
-    code = models.CharField("Код (если есть)", max_length=32, blank=True)
-    is_active = models.BooleanField("Активно", default=True)
-
-    class Meta:
-        verbose_name = "Предприятие"
-        verbose_name_plural = "Предприятия"
-        ordering = ["name"]
-
-    def __str__(self):
-        return self.name
-
-
-class Workshop(TimeStampedModel):
-    """Цех (или объект) внутри предприятия."""
-
-    enterprise = models.ForeignKey(
-        Enterprise, on_delete=models.PROTECT, related_name="workshops", verbose_name="Предприятие"
-    )
-    name = models.CharField("Название", max_length=255)
     code = models.CharField("Код (если есть)", max_length=32, blank=True)
     is_active = models.BooleanField("Активен", default=True)
 
     class Meta:
         verbose_name = "Цех"
         verbose_name_plural = "Цеха"
-        ordering = ["enterprise__name", "name"]
-        # Название цеха уникально в пределах предприятия.
-        constraints = [
-            models.UniqueConstraint(fields=["enterprise", "name"], name="uniq_workshop_name_per_enterprise")
-        ]
+        ordering = ["name"]
 
     def __str__(self):
-        return f"{self.enterprise.name} / {self.name}"
+        return self.name
 
 
 class Section(TimeStampedModel):

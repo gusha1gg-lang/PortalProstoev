@@ -9,7 +9,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
 
-from apps.catalog.models import Enterprise, ItFaultCategory, LossRate, Section, Workshop
+from apps.catalog.models import ItFaultCategory, LossRate, Section, Workshop
 from apps.downtimes.models import DowntimeEvent
 from apps.downtimes.services import create_case_from_events
 
@@ -24,8 +24,7 @@ def dt(text):
 class ReportsTestBase(TestCase):
     @classmethod
     def setUpTestData(cls):
-        cls.enterprise = Enterprise.objects.create(name='Тестовый завод')
-        cls.workshop = Workshop.objects.create(enterprise=cls.enterprise, name="ТЭСЦ-4")
+        cls.workshop = Workshop.objects.create(name="ТЭСЦ-4")
         cls.section = Section.objects.create(workshop=cls.workshop, name="Участок отделки")
         LossRate.objects.create(
             section=cls.section,
@@ -66,12 +65,12 @@ class KpiTests(ReportsTestBase):
         self.assertEqual(data["downtime_min"], 30)  # потери считаем только по ИТ
         self.assertEqual(data["it_share"], Decimal("50.00"))
 
-    def test_incidents_carry_category_and_enterprise(self):
+    def test_incidents_carry_category_and_workshop(self):
         self.make_event("2026-10-10 15:00", "2026-10-10 15:30", category=self.category)
         data = kpi(2026, 10)
         incident = data["incidents"][0]
         self.assertEqual(incident["category"], "Сеть")
-        self.assertEqual(incident["enterprise"], "Тестовый завод")
+        self.assertEqual(incident["workshop"], "ТЭСЦ-4")
         self.assertEqual(incident["kind"], "event")
 
     def test_merged_case_counts_once(self):
@@ -141,8 +140,8 @@ class ViewTests(ReportsTestBase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("text/csv", response["Content-Type"])
         body = response.content.decode("utf-8-sig")
-        self.assertIn("Предприятие", body)
-        self.assertIn("Тестовый завод", body)
+        self.assertIn("Цех", body)
+        self.assertIn("ТЭСЦ-4", body)
 
     def test_export_xlsx_is_valid(self):
         self.make_event("2026-10-10 15:00", "2026-10-10 15:30")

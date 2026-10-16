@@ -13,8 +13,8 @@ class NotificationRecipientInline(admin.TabularInline):
 
 @admin.register(NotificationRule)
 class NotificationRuleAdmin(admin.ModelAdmin):
-    list_display = ("name", "event", "channel", "enterprise", "threshold_percent", "is_active")
-    list_filter = ("event", "channel", "is_active", "enterprise")
+    list_display = ("name", "event", "channel", "workshop", "threshold_percent", "is_active")
+    list_filter = ("event", "channel", "is_active", "workshop")
     search_fields = ("name", "subject_template")
     inlines = [NotificationRecipientInline]
 

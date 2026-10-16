@@ -2,7 +2,7 @@
 Страницы отчётов: дашборд, отчёт по SLA для заказчика и выгрузка в файл.
 
 Период задаётся параметром `?period=ГГГГ-ММ` (по умолчанию — текущий месяц),
-предприятие — необязательным `?enterprise=<id>`.
+цех — необязательным `?workshop=<id>`.
 """
 import csv
 import json
@@ -12,9 +12,9 @@ from django.http import HttpResponse
 from django.shortcuts import render
 from django.utils import timezone
 
-from apps.catalog.models import Enterprise
+from apps.catalog.models import Workshop
 
-from .services import enterprise_breakdown, incident_rows, kpi, monthly_series, top_categories
+from .services import incident_rows, kpi, monthly_series, top_categories, workshop_breakdown
 
 
 def _parse_period(raw: str):
@@ -30,30 +30,30 @@ def _parse_period(raw: str):
         return today.year, today.month
 
 
-def _period_and_enterprise(request):
-    """Достаёт из запроса период и (необязательное) предприятие."""
+def _period_and_workshop(request):
+    """Достаёт из запроса период и (необязательный) цех."""
     today = timezone.localdate()
     period = request.GET.get("period") or f"{today.year:04d}-{today.month:02d}"
     year, month = _parse_period(period)
     period = f"{year:04d}-{month:02d}"
 
-    enterprise = None
-    enterprise_id = request.GET.get("enterprise")
-    if enterprise_id:
-        enterprise = Enterprise.objects.filter(pk=enterprise_id, is_active=True).first()
+    workshop = None
+    workshop_id = request.GET.get("workshop")
+    if workshop_id:
+        workshop = Workshop.objects.filter(pk=workshop_id, is_active=True).first()
 
-    return period, year, month, enterprise
+    return period, year, month, workshop
 
 
 @login_required
 def dashboard(request):
     """Главная страница: KPI, графики и срезы за выбранный период."""
-    period, year, month, enterprise = _period_and_enterprise(request)
+    period, year, month, workshop = _period_and_workshop(request)
 
-    data = kpi(year, month, enterprise=enterprise)
-    series = monthly_series(year, month, enterprise=enterprise, months=6)
+    data = kpi(year, month, workshop=workshop)
+    series = monthly_series(year, month, workshop=workshop, months=6)
     categories = top_categories(data["incidents"])
-    breakdown = enterprise_breakdown(data["rows"])
+    breakdown = workshop_breakdown(data["rows"])
 
     # Данные для графиков: подписи и значения (часы считаем здесь, чтобы в шаблоне не делить).
     series_chart = {
@@ -74,8 +74,8 @@ def dashboard(request):
         "period": period,
         "year": year,
         "month": month,
-        "enterprise": enterprise,
-        "enterprises": Enterprise.objects.filter(is_active=True).order_by("name"),
+        "workshop": workshop,
+        "workshops": Workshop.objects.filter(is_active=True).order_by("name"),
         "kpi": data,
         "series": series,
         "categories": categories,
@@ -89,14 +89,14 @@ def dashboard(request):
 
 @login_required
 def sla_report(request):
-    """Печатная страница «SLA-отчёт для заказчика»: по каждому предприятию и итоги."""
-    period, year, month, enterprise = _period_and_enterprise(request)
+    """Печатная страница «SLA-отчёт для заказчика»: по каждому цеху и итоги."""
+    period, year, month, workshop = _period_and_workshop(request)
 
-    data = kpi(year, month, enterprise=enterprise)
+    data = kpi(year, month, workshop=workshop)
     context = {
         "period": period,
-        "enterprise": enterprise,
-        "enterprises": Enterprise.objects.filter(is_active=True).order_by("name"),
+        "workshop": workshop,
+        "workshops": Workshop.objects.filter(is_active=True).order_by("name"),
         "generated_at": timezone.localtime(),
         "kpi": data,
     }
@@ -106,8 +106,8 @@ def sla_report(request):
 @login_required
 def export_csv(request):
     """Выгрузка инцидентов за период в CSV (открывается в Excel, кодировка с BOM)."""
-    period, year, month, enterprise = _period_and_enterprise(request)
-    rows = incident_rows(year, month, enterprise=enterprise)
+    period, year, month, workshop = _period_and_workshop(request)
+    rows = incident_rows(year, month, workshop=workshop)
 
     response = HttpResponse(content_type="text/csv; charset=utf-8")
     response["Content-Disposition"] = f'attachment; filename="downtimes-{period}.csv"'
@@ -123,7 +123,7 @@ def export_csv(request):
 # Заголовки и порядок колонок — общие для CSV и Excel.
 EXPORT_HEADERS = [
     "Период",
-    "Предприятие",
+    "Цех",
     "Тип",
     "Дата",
     "Название",
@@ -138,7 +138,7 @@ def _export_row_values(row):
     written = timezone.localtime(row["when"]) if timezone.is_aware(row["when"]) else row["when"]
     return [
         row["period"],
-        row["enterprise"],
+        row["workshop"],
         row["kind"],
         written.strftime("%d.%m.%Y %H:%M"),
         row["title"],
@@ -152,8 +152,8 @@ def _export_row_values(row):
 def export_xlsx(request):
     """Выгрузка инцидентов за период в Excel (.xlsx) — по ответу руководителя (В20)."""
     openpyxl = _load_openpyxl()
-    period, year, month, enterprise = _period_and_enterprise(request)
-    rows = incident_rows(year, month, enterprise=enterprise)
+    period, year, month, workshop = _period_and_workshop(request)
+    rows = incident_rows(year, month, workshop=workshop)
 
     workbook = openpyxl.Workbook()
     sheet = workbook.active
@@ -191,13 +191,13 @@ def _load_openpyxl():
 @login_required
 def chart_data(request):
     """Данные для графиков в виде JSON (используется дашбордом при обновлении без перезагрузки)."""
-    period, year, month, enterprise = _period_and_enterprise(request)
-    data = kpi(year, month, enterprise=enterprise)
+    period, year, month, workshop = _period_and_workshop(request)
+    data = kpi(year, month, workshop=workshop)
     payload = {
         "period": period,
         "totals": {"downtime_min": data["downtime_min"], "loss": float(data["loss"])},
-        "series": monthly_series(year, month, enterprise=enterprise, months=6),
+        "series": monthly_series(year, month, workshop=workshop, months=6),
         "categories": [{"name": c["name"], "minutes": c["minutes"]} for c in top_categories(data["incidents"])],
-        "breakdown": enterprise_breakdown(data["rows"]),
+        "breakdown": workshop_breakdown(data["rows"]),
     }
     return HttpResponse(json.dumps(payload, ensure_ascii=False), content_type="application/json")

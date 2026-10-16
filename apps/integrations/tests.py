@@ -1,7 +1,7 @@
 """Тесты интеграций: импорт простоев и связь с тикетами (python manage.py test apps.integrations)."""
 from django.test import TestCase
 
-from apps.catalog.models import Enterprise, Section, Unit, Workshop
+from apps.catalog.models import Section, Unit, Workshop
 from apps.downtimes.models import DowntimeEvent
 
 from .models import TicketLink
@@ -21,8 +21,7 @@ from .services import (
 class ImportTestBase(TestCase):
     @classmethod
     def setUpTestData(cls):
-        enterprise = Enterprise.objects.create(name='АО "ВМЗ" (тест)')
-        workshop = Workshop.objects.create(enterprise=enterprise, name="ТЭСЦ-4")
+        workshop = Workshop.objects.create(name="ТЭСЦ-4")
         ot = Section.objects.create(workshop=workshop, name="Участок отделки труб 1020")
         sv = Section.objects.create(workshop=workshop, name="Участок сварки труб 1020")
         Unit.objects.create(section=ot, name="Площадка №9 окончательной приемки — ОПТ №9")

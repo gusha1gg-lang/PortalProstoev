@@ -253,12 +253,12 @@ def find_duplicate_candidates(window_min=DUPLICATE_WINDOW_MIN):
     """
     Ищет группы похожих простоев (кандидаты на объединение).
 
-    Похожими считаем записи без кейса, у которых одинаковое примечание, одно предприятие
+    Похожими считаем записи без кейса, у которых одинаковое примечание, один цех
     и начало в пределах `window_min` минут. Возвращает список групп (в каждой 2+ события).
     """
     events = list(
         DowntimeEvent.objects.filter(case__isnull=True)
-        .select_related("workshop", "workshop__enterprise", "unit")
+        .select_related("workshop", "unit")
         .order_by("started_at")
     )
 
@@ -267,7 +267,7 @@ def find_duplicate_candidates(window_min=DUPLICATE_WINDOW_MIN):
         note = (event.note or "").strip().lower()
         if not note:
             continue
-        grouped[(event.workshop.enterprise_id, note)].append(event)
+        grouped[(event.workshop_id, note)].append(event)
 
     groups = []
     for same in grouped.values():

@@ -76,7 +76,6 @@ class DowntimeEventAdmin(admin.ModelAdmin):
         "status",
         "fault_side",
         "source",
-        "workshop__enterprise",
         "workshop",
         "fault_category",
         "case",

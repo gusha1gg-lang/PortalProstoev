@@ -12,7 +12,7 @@
 {% block content %}
   <h1>Возможные дубли</h1>
   <p>
-    Записи ниже не входят в кейс, но похожи: одинаковое примечание, одно предприятие
+    Записи ниже не входят в кейс, но похожи: одинаковое примечание, один цех
     и близкое время начала. Отметьте группу кнопкой, чтобы объединить её в один кейс.
     Длительность пересчитается без двойного счёта.
   </p>
@@ -23,7 +23,7 @@
         <h2 style="padding:8px 10px; background:#f8f8f8; margin:0;">
           {{ group.0.note|default:"(без примечания)" }}
           <span style="font-weight:normal; color:#666;">
-            — {{ group|length }} записей, {{ group.0.workshop.enterprise.name }} / {{ group.0.workshop.name }}
+            — {{ group|length }} записей, {{ group.0.workshop.name }}
           </span>
         </h2>
         <table style="width:100%;">

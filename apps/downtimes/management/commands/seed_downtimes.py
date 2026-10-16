@@ -17,7 +17,6 @@ from apps.catalog.models import ItFaultCategory, ItFaultSubcategory, Section, Un
 from apps.downtimes.models import DowntimeEvent
 from apps.downtimes.services import save_with_audit
 
-ENTERPRISE = 'АО "ВМЗ"'
 WORKSHOP = "ТЭСЦ-4"
 
 # (внешний ID, начало, конец, участок, агрегат, примечание, ФИО, код категории, причина, статус, вина)
@@ -66,7 +65,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         try:
-            workshop = Workshop.objects.get(enterprise__name=ENTERPRISE, name=WORKSHOP)
+            workshop = Workshop.objects.get(name=WORKSHOP)
         except Workshop.DoesNotExist as exc:
             raise CommandError(
                 "Сначала выполните: python manage.py seed_catalog (нет цеха ТЭСЦ-4)."

@@ -16,7 +16,7 @@ from decimal import Decimal
 from django.template import Context, Template
 from django.utils import timezone
 
-from apps.catalog.models import Enterprise
+from apps.catalog.models import Workshop
 from apps.sla.services import sla_summary
 
 from .channels import Message, get_channel
@@ -33,7 +33,6 @@ def _default_payload(event: str, ctx: dict) -> tuple[str, str]:
         subject = f"Новый простой по вине ИТ: {ctx.get('title', '')}"
         body = (
             f"Зафиксирован новый простой по вине ИТ-службы.\n\n"
-            f"Предприятие: {ctx.get('enterprise', '—')}\n"
             f"Цех: {ctx.get('workshop', '—')}\n"
             f"Начало: {ctx.get('when', '—')}\n"
             f"Длительность: {ctx.get('duration_min', 0)} мин\n"
@@ -43,10 +42,10 @@ def _default_payload(event: str, ctx: dict) -> tuple[str, str]:
         return subject, body
 
     if event == NotificationRule.Event.SLA_WARNING:
-        subject = f"Предупреждение SLA: {ctx.get('enterprise', '—')}"
+        subject = f"Предупреждение SLA: {ctx.get('workshop', '—')}"
         body = (
             f"Простои по вине ИТ приближаются к лимиту по договору SLA.\n\n"
-            f"Предприятие: {ctx.get('enterprise', '—')}\n"
+            f"Цех: {ctx.get('workshop', '—')}\n"
             f"Период: {ctx.get('period', '—')}\n"
             f"Простои: {ctx.get('downtime_min', 0)} мин из допустимых {ctx.get('allowed_min', 0)} мин "
             f"({ctx.get('percent_used', 0)}%)\n"
@@ -56,10 +55,10 @@ def _default_payload(event: str, ctx: dict) -> tuple[str, str]:
         return subject, body
 
     if event == NotificationRule.Event.SLA_BREACH:
-        subject = f"Превышение лимита SLA: {ctx.get('enterprise', '—')}"
+        subject = f"Превышение лимита SLA: {ctx.get('workshop', '—')}"
         body = (
             f"Лимит простоя по договору SLA превышен.\n\n"
-            f"Предприятие: {ctx.get('enterprise', '—')}\n"
+            f"Цех: {ctx.get('workshop', '—')}\n"
             f"Период: {ctx.get('period', '—')}\n"
             f"Простои: {ctx.get('downtime_min', 0)} мин, допустимо {ctx.get('allowed_min', 0)} мин "
             f"({ctx.get('percent_used', 0)}%)\n"
@@ -104,16 +103,16 @@ def _recipients(rule: NotificationRule) -> list[str]:
     return [r.email for r in rule.recipients.filter(is_active=True) if r.email]
 
 
-def rules_for(event: str, enterprise=None) -> list[NotificationRule]:
+def rules_for(event: str, workshop=None) -> list[NotificationRule]:
     """
-    Активные правила для события. Правило без предприятия — для всех;
-    с предприятием — только для него.
+    Активные правила для события. Правило без цеха — для всех;
+    с цехом — только для него.
     """
-    rules = NotificationRule.objects.filter(event=event, is_active=True).select_related("enterprise")
+    rules = NotificationRule.objects.filter(event=event, is_active=True).select_related("workshop")
     return [
         rule
         for rule in rules
-        if rule.enterprise_id is None or (enterprise is not None and rule.enterprise_id == enterprise.pk)
+        if rule.workshop_id is None or (workshop is not None and rule.workshop_id == workshop.pk)
     ]
 
 
@@ -170,18 +169,17 @@ def _local(value=None):
 
 def notify_new_incident(downtime_event) -> list[NotificationLog]:
     """Уведомляет о новом простое по вине ИТ."""
-    enterprise = downtime_event.workshop.enterprise
+    workshop = downtime_event.workshop
     started = _local(downtime_event.started_at)
     ctx = {
-        "title": downtime_event.note or f"Простой · {downtime_event.workshop.name}",
-        "enterprise": enterprise.name,
-        "workshop": downtime_event.workshop.name,
+        "title": downtime_event.note or f"Простой · {workshop.name}",
+        "workshop": workshop.name,
         "when": started.strftime("%d.%m.%Y %H:%M") if started else "—",
         "duration_min": downtime_event.duration_min,
         "note": downtime_event.note,
     }
     logs = []
-    for rule in rules_for(NotificationRule.Event.NEW_INCIDENT, enterprise):
+    for rule in rules_for(NotificationRule.Event.NEW_INCIDENT, workshop):
         key = f"new_incident:{rule.pk}:event:{downtime_event.pk}"
         log = send_rule(rule, key, ctx, event=downtime_event)
         if log:
@@ -189,12 +187,12 @@ def notify_new_incident(downtime_event) -> list[NotificationLog]:
     return logs
 
 
-def _send_sla(event: str, enterprise, summary: dict, period: str, downtime: Decimal, allowed: Decimal):
+def _send_sla(event: str, workshop, summary: dict, period: str, downtime: Decimal, allowed: Decimal):
     """Отправляет предупреждение или эскалацию SLA по всем подходящим правилам."""
     percent = (downtime / allowed * Decimal(100)).quantize(Decimal("1")) if allowed else ZERO
     contract = summary.get("contract")
     ctx = {
-        "enterprise": enterprise.name,
+        "workshop": workshop.name,
         "period": period,
         "downtime_min": int(downtime),
         "allowed_min": int(allowed),
@@ -203,8 +201,8 @@ def _send_sla(event: str, enterprise, summary: dict, period: str, downtime: Deci
         "penalty": summary["penalty"],
     }
     logs = []
-    for rule in rules_for(event, enterprise):
-        key = f"{event}:{rule.pk}:enterprise:{enterprise.pk}:{period}"
+    for rule in rules_for(event, workshop):
+        key = f"{event}:{rule.pk}:workshop:{workshop.pk}:{period}"
         log = send_rule(rule, key, ctx)
         if log:
             logs.append(log)
@@ -213,15 +211,15 @@ def _send_sla(event: str, enterprise, summary: dict, period: str, downtime: Deci
 
 def check_escalations(now=None) -> list[NotificationLog]:
     """
-    Проверяет лимиты SLA по всем предприятиям за текущий месяц и рассылает
+    Проверяет лимиты SLA по всем цехам за текущий месяц и рассылает
     предупреждения/эскалации. Запускать по расписанию (cron, каждые 5–10 минут).
     """
     moment = _local(now) or timezone.localtime()
     period = f"{moment.year:04d}-{moment.month:02d}"
 
     logs = []
-    for enterprise in Enterprise.objects.filter(is_active=True).order_by("name"):
-        summary = sla_summary(enterprise, moment.year, moment.month)
+    for workshop in Workshop.objects.filter(is_active=True).order_by("name"):
+        summary = sla_summary(workshop, moment.year, moment.month)
         allowed = summary["allowed_min"]
         if allowed is None or allowed <= 0:
             continue  # нет договора или нулевой лимит — проверять нечего
@@ -229,17 +227,17 @@ def check_escalations(now=None) -> list[NotificationLog]:
         downtime = Decimal(summary["downtime_min"])
         if downtime > allowed:
             logs += _send_sla(
-                NotificationRule.Event.SLA_BREACH, enterprise, summary, period, downtime, Decimal(allowed)
+                NotificationRule.Event.SLA_BREACH, workshop, summary, period, downtime, Decimal(allowed)
             )
             continue
 
-        for rule in rules_for(NotificationRule.Event.SLA_WARNING, enterprise):
+        for rule in rules_for(NotificationRule.Event.SLA_WARNING, workshop):
             threshold = Decimal(rule.threshold_percent or 80)
             if downtime >= Decimal(allowed) * threshold / Decimal(100):
                 logs += _send_sla(
-                    NotificationRule.Event.SLA_WARNING, enterprise, summary, period, downtime, Decimal(allowed)
+                    NotificationRule.Event.SLA_WARNING, workshop, summary, period, downtime, Decimal(allowed)
                 )
-                break  # одно предупреждение на предприятие (ключ всё равно не даст дубль)
+                break  # одно предупреждение на цех (ключ всё равно не даст дубль)
     return logs
 
 
