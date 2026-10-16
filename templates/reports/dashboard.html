@@ -19,6 +19,7 @@
       </select>
     </label>
     <button type="submit">Показать</button>
+    <a class="button secondary" href="{% url 'reports:export_xlsx' %}?period={{ period }}{% if enterprise %}&amp;enterprise={{ enterprise.id }}{% endif %}">Выгрузить Excel</a>
     <a class="button secondary" href="{% url 'reports:export_csv' %}?period={{ period }}{% if enterprise %}&amp;enterprise={{ enterprise.id }}{% endif %}">Выгрузить CSV</a>
     <a class="button secondary" href="{% url 'reports:sla_report' %}?period={{ period }}{% if enterprise %}&amp;enterprise={{ enterprise.id }}{% endif %}">SLA-отчёт</a>
   </form>

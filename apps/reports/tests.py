@@ -1,8 +1,10 @@
 """Тесты дашбордов и отчётов (запуск: python manage.py test apps.reports)."""
+import io
 import json
 from datetime import datetime
 from decimal import Decimal
 
+import openpyxl
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
@@ -141,6 +143,16 @@ class ViewTests(ReportsTestBase):
         body = response.content.decode("utf-8-sig")
         self.assertIn("Предприятие", body)
         self.assertIn("Тестовый завод", body)
+
+    def test_export_xlsx_is_valid(self):
+        self.make_event("2026-10-10 15:00", "2026-10-10 15:30")
+        response = self.client.get("/reports/export/xlsx/", {"period": "2026-10"})
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("spreadsheetml", response["Content-Type"])
+        workbook = openpyxl.load_workbook(io.BytesIO(response.content))
+        sheet = workbook.active
+        self.assertEqual(sheet.cell(row=1, column=1).value, "Период")
+        self.assertEqual(sheet.max_row, 2)  # шапка + 1 инцидент
 
     def test_chart_data_is_json(self):
         self.make_event("2026-10-10 15:00", "2026-10-10 15:30")

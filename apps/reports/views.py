@@ -114,22 +114,78 @@ def export_csv(request):
     response.write("\ufeff")  # BOM, чтобы Excel корректно открыл русский текст
 
     writer = csv.writer(response, delimiter=";")
-    writer.writerow(["Период", "Предприятие", "Тип", "Дата", "Название", "Категория", "Длительность, мин", "Потери, ₽"])
+    writer.writerow(EXPORT_HEADERS)
     for row in rows:
-        written = timezone.localtime(row["when"]) if timezone.is_aware(row["when"]) else row["when"]
-        writer.writerow(
-            [
-                row["period"],
-                row["enterprise"],
-                row["kind"],
-                written.strftime("%d.%m.%Y %H:%M"),
-                row["title"],
-                row["category"],
-                row["duration_min"],
-                f"{row['loss']:.2f}",
-            ]
-        )
+        writer.writerow(_export_row_values(row))
     return response
+
+
+# Заголовки и порядок колонок — общие для CSV и Excel.
+EXPORT_HEADERS = [
+    "Период",
+    "Предприятие",
+    "Тип",
+    "Дата",
+    "Название",
+    "Категория",
+    "Длительность, мин",
+    "Потери, ₽",
+]
+
+
+def _export_row_values(row):
+    """Строка выгрузки в общем порядке колонок (для CSV и Excel)."""
+    written = timezone.localtime(row["when"]) if timezone.is_aware(row["when"]) else row["when"]
+    return [
+        row["period"],
+        row["enterprise"],
+        row["kind"],
+        written.strftime("%d.%m.%Y %H:%M"),
+        row["title"],
+        row["category"],
+        row["duration_min"],
+        f"{row['loss']:.2f}",
+    ]
+
+
+@login_required
+def export_xlsx(request):
+    """Выгрузка инцидентов за период в Excel (.xlsx) — по ответу руководителя (В20)."""
+    openpyxl = _load_openpyxl()
+    period, year, month, enterprise = _period_and_enterprise(request)
+    rows = incident_rows(year, month, enterprise=enterprise)
+
+    workbook = openpyxl.Workbook()
+    sheet = workbook.active
+    sheet.title = "Простои"
+    sheet.append(EXPORT_HEADERS)
+    for row in rows:
+        sheet.append(_export_row_values(row))
+
+    # Немного удобства: жирная шапка и ширина колонок.
+    for cell in sheet[1]:
+        cell.font = openpyxl.styles.Font(bold=True)
+    widths = [10, 22, 8, 18, 40, 24, 16, 14]
+    for index, width in enumerate(widths, start=1):
+        sheet.column_dimensions[openpyxl.utils.get_column_letter(index)].width = width
+
+    response = HttpResponse(
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    response["Content-Disposition"] = f'attachment; filename="downtimes-{period}.xlsx"'
+    workbook.save(response)
+    return response
+
+
+def _load_openpyxl():
+    """Загружает openpyxl; если модуль не установлен — понятная ошибка с подсказкой."""
+    try:
+        import openpyxl
+    except ImportError as exc:  # pragma: no cover - зависит от окружения
+        raise RuntimeError(
+            "Для выгрузки в Excel нужен модуль openpyxl. Установите: pip install openpyxl"
+        ) from exc
+    return openpyxl
 
 
 @login_required
