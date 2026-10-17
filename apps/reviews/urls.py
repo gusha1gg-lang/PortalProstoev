@@ -16,4 +16,12 @@ urlpatterns = [
     path("<int:pk>/messages/<int:message_pk>/delete/", views.message_delete, name="message_delete"),
     path("<int:pk>/participants/add/", views.participant_add, name="participant_add"),
     path("<int:pk>/participants/<int:user_pk>/remove/", views.participant_remove, name="participant_remove"),
+    path("<int:pk>/actions/add/", views.action_add, name="action_add"),
+    path("<int:pk>/actions/<int:action_pk>/edit/", views.action_edit, name="action_edit"),
+    path("<int:pk>/actions/<int:action_pk>/status/", views.action_status, name="action_status"),
+    path("<int:pk>/actions/<int:action_pk>/delete/", views.action_delete, name="action_delete"),
+    path("templates/", views.template_list, name="templates"),
+    path("templates/add/", views.template_add, name="template_add"),
+    path("templates/<int:pk>/edit/", views.template_edit, name="template_edit"),
+    path("templates/<int:pk>/toggle/", views.template_toggle, name="template_toggle"),
 ]

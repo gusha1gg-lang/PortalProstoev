@@ -11,6 +11,7 @@
 import re
 
 from django.contrib.auth import get_user_model
+from django.db import models
 from django.urls import reverse
 from django.utils import timezone
 
@@ -19,7 +20,9 @@ from apps.notifications.services import notify_review_mention
 
 from .models import (
     STATUS_TRANSITIONS,
+    ActionTemplate,
     IncidentReview,
+    ReviewAction,
     ReviewLog,
     ReviewMessage,
     ReviewParticipant,
@@ -199,3 +202,100 @@ def remove_message(message, user):
         comment="Удалено сообщение чата",
     )
     message.delete()
+
+# --- Шаблоны мероприятий ---
+
+def active_templates_for(category):
+    """Активные шаблоны мероприятий для ситуации: общие + под нужную категорию вины."""
+    query = models.Q(category__isnull=True)
+    if category is not None:
+        query |= models.Q(category=category)
+    return ActionTemplate.objects.filter(is_active=True).filter(query).order_by("order", "title")
+
+
+# --- Мероприятия ---
+
+def add_review_action(review, created_by, title="", description="", due_at=None,
+                      assignees=None, template=None):
+    """Добавляет мероприятие в разбор.
+
+    Если выбран `template` и название не заполнено — берём название и описание из шаблона.
+    Ответственных автоматически делаем участниками разбора (чтобы видели разбор).
+    """
+    title = (title or "").strip()
+    description = (description or "").strip()
+    if template is not None:
+        if not title:
+            title = template.title
+        if not description:
+            description = template.description
+    if not title:
+        raise ValueError("У мероприятия должно быть название.")
+
+    action = ReviewAction.objects.create(
+        review=review,
+        created_by=created_by,
+        title=title,
+        description=description,
+        due_at=due_at,
+    )
+    assignees = list(assignees or [])
+    if assignees:
+        action.assignees.set(assignees)
+        for user in assignees:
+            add_participant(review, user, by=created_by)
+
+    ReviewLog.objects.create(
+        review=review, user=created_by, action=ReviewLog.Action.UPDATED,
+        comment=f"Добавлено мероприятие «{title}»",
+    )
+    return action
+
+
+def update_review_action(action, user, title, description="", due_at=None, assignees=None):
+    """Меняет мероприятие: название, описание, срок, ответственных."""
+    title = (title or "").strip()
+    if not title:
+        raise ValueError("У мероприятия должно быть название.")
+
+    action.title = title
+    action.description = (description or "").strip()
+    action.due_at = due_at
+    action.save(update_fields=["title", "description", "due_at", "updated_at"])
+
+    assignees = list(assignees or [])
+    action.assignees.set(assignees)
+    for user in assignees:
+        add_participant(action.review, user, by=user)
+
+    ReviewLog.objects.create(
+        review=action.review, user=user, action=ReviewLog.Action.UPDATED,
+        comment=f"Изменено мероприятие «{title}»",
+    )
+    return action
+
+
+def set_action_status(action, target, user):
+    """Меняет статус мероприятия (вручную). Возвращает названия старого и нового статусов."""
+    allowed = {value for value, _label in ReviewAction.Status.choices}
+    if target not in allowed:
+        raise ValueError("Неизвестный статус мероприятия.")
+    old = action.get_status_display()
+    action.status = target
+    action.save(update_fields=["status", "updated_at"])
+    ReviewLog.objects.create(
+        review=action.review, user=user, action=ReviewLog.Action.UPDATED,
+        comment=f"Мероприятие «{action.title}»: {old} → {action.get_status_display()}",
+    )
+    return old, action.get_status_display()
+
+
+def delete_review_action(action, user):
+    """Удаляет мероприятие и отмечает это в истории разбора."""
+    review = action.review
+    title = action.title
+    action.delete()
+    ReviewLog.objects.create(
+        review=review, user=user, action=ReviewLog.Action.UPDATED,
+        comment=f"Удалено мероприятие «{title}»",
+    )

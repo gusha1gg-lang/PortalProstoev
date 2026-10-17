@@ -137,6 +137,105 @@
     </div>
 
     <div class="card">
+      <h3>Мероприятия (выполнено {{ actions_done }} из {{ actions|length }})</h3>
+      <p class="muted">
+        Что нужно сделать по итогам разбора: срок, ответственные, статус (меняется вручную).
+        Ответственные автоматически становятся участниками разбора.
+      </p>
+
+      {% if actions %}
+        <table>
+          <thead>
+            <tr>
+              <th>Срок</th>
+              <th>Мероприятие</th>
+              <th>Ответственные</th>
+              <th>Статус</th>
+              {% if can_edit %}<th>Отметить</th>{% endif %}
+              {% if can_manage_this %}<th></th>{% endif %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for action in actions %}
+              <tr>
+                <td>
+                  {{ action.due_at|date:"d.m.Y H:i"|default:"—" }}
+                  {% if action.is_overdue %}<br><span class="badge removed">просрочено</span>{% endif %}
+                </td>
+                <td>
+                  <b>{{ action.title }}</b>
+                  {% if action.description %}<br><small class="muted">{{ action.description|linebreaksbr }}</small>{% endif %}
+                </td>
+                <td>
+                  {% for u in action.assignees.all %}{{ u.username }}{% if not forloop.last %}, {% endif %}{% empty %}—{% endfor %}
+                </td>
+                <td>{{ action.get_status_display }}</td>
+                {% if can_edit %}
+                  <td>
+                    <form method="post" action="{% url 'reviews:action_status' review.pk action.pk %}" class="inline-form">
+                      {% csrf_token %}
+                      {% for value, label in action_statuses %}
+                        <button type="submit" name="to" value="{{ value }}" class="button secondary"{% if action.status == value %} disabled{% endif %}>{{ label }}</button>
+                      {% endfor %}
+                    </form>
+                  </td>
+                {% endif %}
+                {% if can_manage_this %}
+                  <td>
+                    <a class="button secondary" href="{% url 'reviews:action_edit' review.pk action.pk %}">Изменить</a>
+                    <form method="post" action="{% url 'reviews:action_delete' review.pk action.pk %}" class="inline-form">
+                      {% csrf_token %}
+                      <button type="submit" class="button secondary">Удалить</button>
+                    </form>
+                  </td>
+                {% endif %}
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <p class="muted">Мероприятий пока нет.</p>
+      {% endif %}
+
+      {% if can_edit %}
+        <form method="post" action="{% url 'reviews:action_add' review.pk %}">
+          {% csrf_token %}
+          <div class="filters">
+            <label>Из шаблона
+              <select name="template">
+                <option value="">— не использовать —</option>
+                {% for t in templates %}
+                  <option value="{{ t.id }}">{{ t.title }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>Кратко
+              <input type="text" name="title" placeholder="что сделать" size="30">
+            </label>
+            <label>Описание
+              <input type="text" name="description" placeholder="подробности (необязательно)" size="34">
+            </label>
+            <label>Срок
+              <input type="datetime-local" name="due_at">
+            </label>
+            <label>Ответственные (можно несколько)
+              <select name="assignees" multiple size="4">
+                {% for u in all_users %}
+                  <option value="{{ u.id }}">{{ u.username }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <button type="submit">Добавить мероприятие</button>
+          </div>
+          <p class="muted">
+            Совет: выберите «Из шаблона» — название и описание подставим из него.
+            Если заполнить «Кратко» вручную, оно важнее шаблона.
+          </p>
+        </form>
+      {% endif %}
+    </div>
+
+    <div class="card">
       <h3>Чат разбора</h3>
       <p class="muted">
         Обсуждайте разбор здесь. Чтобы позвать коллегу, упомяните его по логину:
@@ -283,7 +382,7 @@
   </div>
 
   <p class="muted">
-    Дальше по этому разбору появятся: мероприятия (срок, ответственные) и согласование
-    (этап 11.7, следующие шаги).
+    Дальше по этому разбору появятся: согласование (согласуют все назначенные, можно «вернуть
+    на доработку») и отправка мероприятий в Omnitracker (этап 11.7, следующие шаги).
   </p>
 {% endblock %}

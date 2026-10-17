@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block title %}Шаблоны мероприятий — PortalProstoev{% endblock %}
+
+{% block content %}
+  <p class="muted"><a href="{% url 'reviews:list' %}">← К списку разборов</a></p>
+
+  <h2>Шаблоны мероприятий</h2>
+
+  <p class="muted">
+    Типовые действия по ситуациям (АРМ, БД, …). На карточке разбора их можно выбрать
+    в поле «Из шаблона» — название и описание подставятся сами.
+    Шаблоны <b>не удаляем</b>: не нужный просто скрываем, его можно вернуть.
+  </p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Ситуация (категория)</th>
+        <th>Кратко</th>
+        <th>Что сделать</th>
+        <th class="num">Порядок</th>
+        <th>Статус</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for t in templates %}
+        <tr>
+          <td>{{ t.category.name|default:"Общий" }}</td>
+          <td><b>{{ t.title }}</b></td>
+          <td>{{ t.description|linebreaksbr|default:"—" }}</td>
+          <td class="num">{{ t.order }}</td>
+          <td>
+            {% if t.is_active %}<span class="badge ok">активен</span>{% else %}<span class="badge removed">скрыт</span>{% endif %}
+          </td>
+          <td>
+            <a class="button secondary" href="{% url 'reviews:template_edit' t.pk %}">Изменить</a>
+            <form method="post" action="{% url 'reviews:template_toggle' t.pk %}" class="inline-form">
+              {% csrf_token %}
+              <button type="submit" class="button secondary">{% if t.is_active %}Скрыть{% else %}Вернуть{% endif %}</button>
+            </form>
+          </td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="6" class="muted">Шаблонов пока нет — добавьте первый ниже.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="card">
+    <h3>Добавить шаблон</h3>
+    <form method="post" action="{% url 'reviews:template_add' %}">
+      {% csrf_token %}
+      <div class="filters">
+        <label>Ситуация (категория)
+          <select name="category">
+            <option value="">— общий для всех —</option>
+            {% for c in categories %}
+              <option value="{{ c.id }}">{{ c.name }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>Кратко
+          <input type="text" name="title" placeholder="например: Перезагрузить АРМ" size="34">
+        </label>
+        <label>Что сделать
+          <input type="text" name="description" placeholder="подробности (необязательно)" size="40">
+        </label>
+        <label>Порядок
+          <input type="number" name="order" value="100" min="0" style="width: 80px;">
+        </label>
+        <button type="submit">Добавить шаблон</button>
+      </div>
+    </form>
+  </div>
+{% endblock %}

@@ -11,9 +11,10 @@
 """
 from django.conf import settings
 from django.db import models
+from django.db.models import F
 from django.utils import timezone
 
-from apps.catalog.models import TimeStampedModel
+from apps.catalog.models import ItFaultCategory, TimeStampedModel
 from apps.downtimes.models import DowntimeCase
 
 
@@ -229,3 +230,88 @@ class ReviewLog(TimeStampedModel):
 
     def __str__(self):
         return f"{self.get_action_display()} · {self.review_id} · {self.created_at:%d.%m.%Y %H:%M}"
+
+
+class ActionTemplate(TimeStampedModel):
+    """Шаблон мероприятия: типовое действие по ситуации (категории вины ИТ).
+
+    Справочник: шаблоны **не удаляем**, а скрываем (`is_active=False`) — как категории
+    и структуру (см. `модуль-catalog.md`). Шаблон без категории — общий для всех ситуаций.
+    """
+
+    category = models.ForeignKey(
+        ItFaultCategory,
+        on_delete=models.PROTECT,
+        related_name="action_templates",
+        verbose_name="Категория вины",
+        null=True,
+        blank=True,
+        help_text="Пусто — шаблон общий, подходит для любой ситуации.",
+    )
+    title = models.CharField("Кратко", max_length=255)
+    description = models.TextField("Что сделать", blank=True)
+    order = models.PositiveIntegerField("Порядок", default=100)
+    is_active = models.BooleanField("Активен", default=True)
+
+    class Meta:
+        verbose_name = "Шаблон мероприятия"
+        verbose_name_plural = "Шаблоны мероприятий"
+        ordering = ["order", "title"]
+
+    def __str__(self):
+        return f"{self.category.name if self.category else 'Общий'} · {self.title}"
+
+
+class ReviewAction(TimeStampedModel):
+    """Мероприятие по разбору: что сделать, к какому сроку и кто отвечает.
+
+    Ответственных может быть несколько. Статус меняется вручную.
+    """
+
+    class Status(models.TextChoices):
+        PLANNED = "planned", "Запланировано"
+        IN_PROGRESS = "in_progress", "В работе"
+        DONE = "done", "Выполнено"
+        CANCELED = "canceled", "Отменено"
+
+    review = models.ForeignKey(
+        IncidentReview,
+        on_delete=models.CASCADE,
+        related_name="actions",
+        verbose_name="Разбор",
+    )
+    title = models.CharField("Кратко", max_length=255)
+    description = models.TextField("Что сделать", blank=True)
+    due_at = models.DateTimeField("Срок", null=True, blank=True)
+    assignees = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        related_name="review_actions",
+        verbose_name="Ответственные",
+        blank=True,
+    )
+    status = models.CharField(
+        "Статус", max_length=16, choices=Status.choices, default=Status.PLANNED
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="review_actions_created",
+        verbose_name="Создал",
+        null=True,
+        blank=True,
+    )
+
+    class Meta:
+        verbose_name = "Мероприятие разбора"
+        verbose_name_plural = "Мероприятия разбора"
+        ordering = [F("due_at").asc(nulls_last=True), "id"]
+
+    def __str__(self):
+        return f"{self.review.number} · {self.title}"
+
+    @property
+    def is_overdue(self):
+        """Срок прошёл, а мероприятие ещё не выполнено и не отменено."""
+        if not self.due_at or self.status in (self.Status.DONE, self.Status.CANCELED):
+            return False
+        return self.due_at < timezone.now()

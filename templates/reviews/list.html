@@ -12,6 +12,12 @@
     инцидент — без двойного счёта.
   </p>
 
+  {% if can_manage %}
+    <p class="muted">
+      Шаблоны мероприятий по ситуациям (АРМ, БД, …): <a href="{% url 'reviews:templates' %}">управлять списком</a>.
+    </p>
+  {% endif %}
+
   <form method="get" class="filters">
     <label>Статус
       <select name="status">

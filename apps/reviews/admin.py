@@ -2,7 +2,9 @@
 from django.contrib import admin
 
 from .models import (
+    ActionTemplate,
     IncidentReview,
+    ReviewAction,
     ReviewLog,
     ReviewMessage,
     ReviewParticipant,
@@ -39,3 +41,18 @@ class ReviewMessageAdmin(admin.ModelAdmin):
 class ReviewLogAdmin(admin.ModelAdmin):
     list_display = ("review", "action", "user", "created_at")
     list_filter = ("action",)
+
+
+@admin.register(ReviewAction)
+class ReviewActionAdmin(admin.ModelAdmin):
+    list_display = ("review", "title", "status", "due_at")
+    list_filter = ("status",)
+    search_fields = ("title", "review__number")
+    filter_horizontal = ("assignees",)
+
+
+@admin.register(ActionTemplate)
+class ActionTemplateAdmin(admin.ModelAdmin):
+    list_display = ("title", "category", "order", "is_active")
+    list_filter = ("is_active", "category")
+    search_fields = ("title", "description")

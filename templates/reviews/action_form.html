@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+
+{% block title %}Мероприятие — {{ review.number }} — PortalProstoev{% endblock %}
+
+{% block content %}
+  <p class="muted">
+    <a href="{% url 'reviews:detail' review.pk %}">← К разбору {{ review.number }}</a>
+  </p>
+
+  <h2>Мероприятие</h2>
+
+  <p class="muted">Разбор {{ review.number }}. Статус мероприятия меняется вручную на карточке разбора.</p>
+
+  <form method="post">
+    {% csrf_token %}
+    <div class="filters">
+      <label>Кратко
+        <input type="text" name="title" value="{{ action.title }}" size="48" required>
+      </label>
+      <label>Срок
+        <input type="datetime-local" name="due_at" value="{{ action.due_at|date:'Y-m-d\TH:i' }}">
+      </label>
+      <label>Ответственные (можно несколько)
+        <select name="assignees" multiple size="6">
+          {% for u in all_users %}
+            <option value="{{ u.id }}"{% if u.id in assignee_ids %} selected{% endif %}>{{ u.username }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Что сделать
+        <textarea name="description" rows="4" cols="60">{{ action.description }}</textarea>
+      </label>
+      <button type="submit">Сохранить</button>
+      <a class="button secondary" href="{% url 'reviews:detail' review.pk %}">Отмена</a>
+    </div>
+  </form>
+{% endblock %}

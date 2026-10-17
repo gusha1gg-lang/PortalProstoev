@@ -6,37 +6,39 @@ from datetime import datetime
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
-from django.test import TestCase
-from django.utils import timezone
-
-from apps.accounts.roles import ROLE_DOWNTIME_SPECIALIST, ROLE_IT_MANAGER, ROLE_OPERATOR
-from apps.catalog.models import Workshop
-from apps.downtimes.models import DowntimeEvent
-
-from datetime import datetime
-
-from django.contrib.auth import get_user_model
-from django.contrib.auth.models import Group
 from django.core import mail
 from django.test import TestCase
 from django.utils import timezone
 
 from apps.accounts.roles import ROLE_DOWNTIME_SPECIALIST, ROLE_IT_MANAGER, ROLE_OPERATOR
-from apps.catalog.models import Workshop
+from apps.catalog.models import ItFaultCategory, Workshop
 from apps.downtimes.models import DowntimeEvent
 from apps.notifications.models import NotificationLog
 
-from .models import IncidentReview, ReviewLog, ReviewMessage, ReviewParticipant, TimelineEntry
+from .models import (
+    ActionTemplate,
+    IncidentReview,
+    ReviewAction,
+    ReviewLog,
+    ReviewMessage,
+    ReviewParticipant,
+    TimelineEntry,
+)
 from .services import (
+    active_templates_for,
     add_participant,
+    add_review_action,
     add_timeline_entry,
     change_status,
     create_review_from_events,
+    delete_review_action,
     delete_timeline_entry,
     eligible_leads,
     extract_mentions,
     post_review_message,
     remove_participant,
+    set_action_status,
+    update_review_action,
 )
 
 # Тестовый клиент ходит по имени хоста из ALLOWED_HOSTS.
@@ -603,3 +605,282 @@ class ParticipantViewTests(ReviewTestBase):
             **HOST,
         )
         self.assertEqual(response.status_code, 403)
+
+
+class ActionTemplateServiceTests(ReviewTestBase):
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.category = ItFaultCategory.objects.create(code="АРМ", name="АРМ")
+
+    def test_active_templates_include_universal_and_matching_category(self):
+        universal = ActionTemplate.objects.create(title="Общий")
+        matching = ActionTemplate.objects.create(title="АРМ-шаблон", category=self.category)
+        other = ItFaultCategory.objects.create(code="БД", name="БД")
+        ActionTemplate.objects.create(title="БД-шаблон", category=other)
+
+        titles = [t.title for t in active_templates_for(self.category)]
+        self.assertIn("Общий", titles)
+        self.assertIn("АРМ-шаблон", titles)
+        self.assertNotIn("БД-шаблон", titles)
+        self.assertIn(universal, active_templates_for(self.category))
+        self.assertIn(matching, active_templates_for(self.category))
+
+    def test_hidden_template_is_not_offered(self):
+        ActionTemplate.objects.create(title="Скрытый", is_active=False)
+        self.assertNotIn("Скрытый", [t.title for t in active_templates_for(None)])
+
+    def test_ordering_by_order_then_title(self):
+        ActionTemplate.objects.create(title="Позже", order=200)
+        ActionTemplate.objects.create(title="Раньше", order=10)
+        self.assertEqual([t.title for t in active_templates_for(None)], ["Раньше", "Позже"])
+
+
+class ReviewActionServiceTests(ReviewTestBase):
+    def make_review(self):
+        event = self.make_event("2026-10-01 10:00", "2026-10-01 10:30")
+        review, _ = create_review_from_events(
+            [event], lead=self.specialist, created_by=self.specialist
+        )
+        return review
+
+    def test_create_action_from_template(self):
+        review = self.make_review()
+        template = ActionTemplate.objects.create(
+            title="Перезагрузить АРМ", description="Проверить питание и перезагрузить"
+        )
+        action = add_review_action(
+            review, created_by=self.specialist, template=template,
+            due_at=dt("2026-10-02 09:00"),
+        )
+        self.assertEqual(action.title, "Перезагрузить АРМ")
+        self.assertIn("перезагрузить", action.description)
+        self.assertEqual(action.status, ReviewAction.Status.PLANNED)
+
+    def test_explicit_title_beats_template(self):
+        review = self.make_review()
+        template = ActionTemplate.objects.create(title="Из шаблона")
+        action = add_review_action(
+            review, created_by=self.specialist, title="Своё название", template=template
+        )
+        self.assertEqual(action.title, "Своё название")
+
+    def test_create_action_without_title_raises(self):
+        review = self.make_review()
+        with self.assertRaises(ValueError):
+            add_review_action(review, created_by=self.specialist, title="   ")
+
+    def test_assignees_become_participants(self):
+        review = self.make_review()
+        action = add_review_action(
+            review, created_by=self.specialist, title="Задача", assignees=[self.operator]
+        )
+        self.assertIn(self.operator, action.assignees.all())
+        self.assertTrue(review.participants.filter(user=self.operator).exists())
+
+    def test_set_status_changes_and_logs(self):
+        review = self.make_review()
+        action = add_review_action(review, created_by=self.specialist, title="Задача")
+        old, new = set_action_status(action, ReviewAction.Status.DONE, user=self.specialist)
+        action.refresh_from_db()
+        self.assertEqual(action.status, ReviewAction.Status.DONE)
+        self.assertEqual(new, "Выполнено")
+        self.assertNotEqual(old, new)
+        self.assertTrue(ReviewLog.objects.filter(review=review, comment__contains="Выполнено").exists())
+
+    def test_invalid_status_raises(self):
+        review = self.make_review()
+        action = add_review_action(review, created_by=self.specialist, title="Задача")
+        with self.assertRaises(ValueError):
+            set_action_status(action, "nonsense", user=self.specialist)
+
+    def test_update_action_changes_fields_and_assignees(self):
+        review = self.make_review()
+        action = add_review_action(review, created_by=self.specialist, title="Старое")
+        update_review_action(
+            action, user=self.specialist, title="Новое", description="детали",
+            due_at=dt("2026-10-05 12:00"), assignees=[self.operator],
+        )
+        action.refresh_from_db()
+        self.assertEqual(action.title, "Новое")
+        self.assertEqual(action.description, "детали")
+        self.assertTrue(action.assignees.filter(pk=self.operator.pk).exists())
+        self.assertTrue(review.participants.filter(user=self.operator).exists())
+
+    def test_delete_action_keeps_log(self):
+        review = self.make_review()
+        action = add_review_action(review, created_by=self.specialist, title="Удалить")
+        delete_review_action(action, user=self.specialist)
+        self.assertEqual(review.actions.count(), 0)
+        self.assertTrue(ReviewLog.objects.filter(review=review, comment__contains="Удалено").exists())
+
+
+class ReviewActionViewTests(ReviewTestBase):
+    def make_review(self):
+        event = self.make_event("2026-10-01 10:00", "2026-10-01 10:30")
+        review, _ = create_review_from_events(
+            [event], lead=self.specialist, created_by=self.specialist
+        )
+        return review
+
+    def test_specialist_adds_action(self):
+        review = self.make_review()
+        self.client.force_login(self.specialist)
+        response = self.client.post(
+            f"/reviews/{review.pk}/actions/add/",
+            {"title": "Проверить АРМ", "due_at": "2026-10-02T09:00", "assignees": [self.operator.pk]},
+            **HOST,
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(review.actions.count(), 1)
+        self.assertTrue(review.participants.filter(user=self.operator).exists())
+
+    def test_action_from_template_via_view(self):
+        review = self.make_review()
+        template = ActionTemplate.objects.create(title="Из шаблона", description="шаг 1")
+        self.client.force_login(self.specialist)
+        self.client.post(
+            f"/reviews/{review.pk}/actions/add/", {"template": template.pk}, **HOST
+        )
+        action = review.actions.get()
+        self.assertEqual(action.title, "Из шаблона")
+        self.assertEqual(action.description, "шаг 1")
+
+    def test_outsider_cannot_add_action(self):
+        review = self.make_review()
+        self.client.force_login(self.operator)
+        response = self.client.post(
+            f"/reviews/{review.pk}/actions/add/", {"title": "нельзя"}, **HOST
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(review.actions.count(), 0)
+
+    def test_specialist_changes_action_status(self):
+        review = self.make_review()
+        action = add_review_action(review, created_by=self.specialist, title="Задача")
+        self.client.force_login(self.specialist)
+        response = self.client.post(
+            f"/reviews/{review.pk}/actions/{action.pk}/status/",
+            {"to": ReviewAction.Status.IN_PROGRESS},
+            **HOST,
+        )
+        self.assertEqual(response.status_code, 302)
+        action.refresh_from_db()
+        self.assertEqual(action.status, ReviewAction.Status.IN_PROGRESS)
+
+    def test_outsider_cannot_change_action_status(self):
+        review = self.make_review()
+        action = add_review_action(review, created_by=self.specialist, title="Задача")
+        self.client.force_login(self.operator)
+        response = self.client.post(
+            f"/reviews/{review.pk}/actions/{action.pk}/status/",
+            {"to": ReviewAction.Status.DONE},
+            **HOST,
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_specialist_edits_action(self):
+        review = self.make_review()
+        action = add_review_action(review, created_by=self.specialist, title="Старое")
+        self.client.force_login(self.specialist)
+        response = self.client.post(
+            f"/reviews/{review.pk}/actions/{action.pk}/edit/",
+            {"title": "Новое", "description": "", "due_at": ""},
+            **HOST,
+        )
+        self.assertEqual(response.status_code, 302)
+        action.refresh_from_db()
+        self.assertEqual(action.title, "Новое")
+
+    def test_edit_form_opens(self):
+        review = self.make_review()
+        action = add_review_action(review, created_by=self.specialist, title="Старое")
+        self.client.force_login(self.specialist)
+        response = self.client.get(
+            f"/reviews/{review.pk}/actions/{action.pk}/edit/", **HOST
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Старое")
+
+    def test_participant_cannot_delete_action(self):
+        review = self.make_review()
+        action = add_review_action(review, created_by=self.specialist, title="Задача")
+        add_participant(review, self.operator, by=self.specialist)
+        self.client.force_login(self.operator)
+        response = self.client.post(
+            f"/reviews/{review.pk}/actions/{action.pk}/delete/", **HOST
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(review.actions.count(), 1)
+
+    def test_specialist_deletes_action(self):
+        review = self.make_review()
+        action = add_review_action(review, created_by=self.specialist, title="Задача")
+        self.client.force_login(self.specialist)
+        response = self.client.post(
+            f"/reviews/{review.pk}/actions/{action.pk}/delete/", **HOST
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(review.actions.count(), 0)
+
+    def test_card_shows_overdue_mark(self):
+        review = self.make_review()
+        add_review_action(
+            review, created_by=self.specialist, title="Просроченная",
+            due_at=dt("2020-01-01 00:00"),
+        )
+        self.client.force_login(self.specialist)
+        response = self.client.get(f"/reviews/{review.pk}/", **HOST)
+        self.assertContains(response, "просрочено")
+
+
+class TemplateViewTests(ReviewTestBase):
+    def test_specialist_sees_templates_page(self):
+        ActionTemplate.objects.create(title="Общий")
+        self.client.force_login(self.specialist)
+        response = self.client.get("/reviews/templates/", **HOST)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Общий")
+
+    def test_operator_cannot_open_templates(self):
+        self.client.force_login(self.operator)
+        response = self.client.get("/reviews/templates/", **HOST)
+        self.assertEqual(response.status_code, 403)
+
+    def test_specialist_adds_template(self):
+        self.client.force_login(self.specialist)
+        response = self.client.post(
+            "/reviews/templates/add/",
+            {"title": "Перезагрузить АРМ", "description": "по питанию", "order": "10"},
+            **HOST,
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(ActionTemplate.objects.filter(title="Перезагрузить АРМ").exists())
+
+    def test_add_template_without_title_is_rejected(self):
+        self.client.force_login(self.specialist)
+        self.client.post("/reviews/templates/add/", {"title": "  "}, **HOST)
+        self.assertEqual(ActionTemplate.objects.count(), 0)
+
+    def test_specialist_toggles_template(self):
+        template = ActionTemplate.objects.create(title="Общий")
+        self.client.force_login(self.specialist)
+        self.client.post(f"/reviews/templates/{template.pk}/toggle/", **HOST)
+        template.refresh_from_db()
+        self.assertFalse(template.is_active)
+        self.client.post(f"/reviews/templates/{template.pk}/toggle/", **HOST)
+        template.refresh_from_db()
+        self.assertTrue(template.is_active)
+
+    def test_specialist_edits_template(self):
+        template = ActionTemplate.objects.create(title="Старое")
+        self.client.force_login(self.specialist)
+        response = self.client.post(
+            f"/reviews/templates/{template.pk}/edit/",
+            {"title": "Новое", "description": "детали", "order": "5"},
+            **HOST,
+        )
+        self.assertEqual(response.status_code, 302)
+        template.refresh_from_db()
+        self.assertEqual(template.title, "Новое")
+        self.assertEqual(template.order, 5)
