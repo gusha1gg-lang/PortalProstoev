@@ -204,6 +204,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     background: #eef2f7; color: var(--muted); border: 1px solid var(--line);
 }
 .badge.corrected { background: #eef4fc; color: var(--accent-dark); border-color: #c9dcf5; }
+.badge.ok { background: #eaf7ef; color: var(--ok); border-color: #bfe3cc; }
 .badge.adjusted { background: #fff7e6; color: var(--warn); border-color: #f0d9a8; }
 .badge.removed { background: #fbeceb; color: var(--bad); border-color: #f0c4c0; }
 
@@ -227,6 +228,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 table.details { margin: 0; }
 table.details th { width: 220px; }
 .pager { display: flex; align-items: center; gap: 12px; margin-top: 16px; }
+th.pick, td.pick { width: 36px; text-align: center; }
 
 @media print {
     .topbar, .filters, .no-print { display: none !important; }

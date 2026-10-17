@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block title %}Разборы простоев — PortalProstoev{% endblock %}
+
+{% block content %}
+  <h2>Разборы простоев</h2>
+
+  <p class="muted">
+    Разбор — это рабочее место по инциденту: хронология, чат, мероприятия и согласование.
+    Создаётся из <a href="{% url 'downtimes:list' %}">списка простоев</a>: отметьте один или
+    несколько простоев и нажмите «Создать разбор». Несколько простоев объединяются в один
+    инцидент — без двойного счёта.
+  </p>
+
+  <form method="get" class="filters">
+    <label>Статус
+      <select name="status">
+        <option value="">— все —</option>
+        {% for value, label in statuses %}
+          <option value="{{ value }}"{% if filters.status == value %} selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Ведущий
+      <select name="lead">
+        <option value="">— все —</option>
+        {% for u in leads %}
+          <option value="{{ u.id }}"{% if filters.lead == u.id|stringformat:"s" %} selected{% endif %}>{{ u.username }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Поиск
+      <input type="text" name="q" value="{{ filters.q }}" placeholder="номер, описание, инцидент">
+    </label>
+    <button type="submit">Показать</button>
+    <a class="button secondary" href="{% url 'reviews:list' %}">Сбросить</a>
+  </form>
+
+  <p class="muted">Всего разборов: <b>{{ total }}</b>.</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Номер</th>
+        <th>Краткое описание</th>
+        <th>Инцидент</th>
+        <th>Статус</th>
+        <th class="num">Простоев</th>
+        <th>Ведущий</th>
+        <th>Создан</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for review in page %}
+        <tr>
+          <td><b>{{ review.number }}</b></td>
+          <td>{{ review.title|default:"—" }}</td>
+          <td>
+            {{ review.case.number }}
+            {% if review.case.duration_min %}<br><small class="muted">{{ review.case.duration_min }} мин</small>{% endif %}
+          </td>
+          <td>{{ review.get_status_display }}</td>
+          <td class="num">{{ review.case.events.count }}</td>
+          <td>{{ review.lead.username }}</td>
+          <td>{{ review.created_at|date:"d.m.Y H:i" }}</td>
+          <td><a class="button secondary" href="{% url 'reviews:detail' review.pk %}">Открыть</a></td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="8" class="muted">Разборов пока нет. Создайте его из списка «Простои».</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% if page.has_other_pages %}
+    <p class="pager">
+      {% if page.has_previous %}
+        <a class="button secondary" href="?page={{ page.previous_page_number }}{% if querystring %}&amp;{{ querystring }}{% endif %}">← Назад</a>
+      {% endif %}
+      <span class="muted">Страница {{ page.number }} из {{ page.paginator.num_pages }}</span>
+      {% if page.has_next %}
+        <a class="button secondary" href="?page={{ page.next_page_number }}{% if querystring %}&amp;{{ querystring }}{% endif %}">Вперёд →</a>
+      {% endif %}
+    </p>
+  {% endif %}
+{% endblock %}

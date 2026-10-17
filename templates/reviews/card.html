@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+
+{% block title %}{{ review.number }} — PortalProstoev{% endblock %}
+
+{% block content %}
+  <p class="muted">
+    <a href="{% url 'reviews:list' %}">← К списку разборов</a>
+    {% if user.is_staff %}
+      · <a href="/admin/reviews/incidentreview/{{ review.pk }}/change/">Открыть в админке</a>
+    {% endif %}
+  </p>
+
+  <h2>Разбор {{ review.number }}</h2>
+
+  <p>
+    <span class="badge corrected">{{ review.get_status_display }}</span>
+    <span class="badge">инцидент {{ case.number }}</span>
+  </p>
+
+  <div class="card-stack">
+    <div class="card">
+      <h3>Шапка разбора</h3>
+      <table class="details">
+        <tbody>
+          <tr><th>Краткое описание</th><td>{{ review.title|default:"—" }}</td></tr>
+          <tr><th>Ведущий</th><td>{{ review.lead.username }}</td></tr>
+          <tr><th>Создал</th><td>{{ review.created_by.username }} · {{ review.created_at|date:"d.m.Y H:i" }}</td></tr>
+          <tr><th>Статус</th><td>{{ review.get_status_display }}</td></tr>
+          <tr><th>Инцидент</th><td>{{ case.number }} · {{ case.title }}</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h3>Входящие простои ({{ case.events.count }})</h3>
+      <p class="muted">
+        Длительность инцидента считается объединением интервалов — без двойного счёта:
+        <b>{{ case.duration_min }} мин</b>.
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>Начало</th>
+            <th>Окончание</th>
+            <th>Цех / участок</th>
+            <th>Категория / причина</th>
+            <th class="num">Длит., мин</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for event in events %}
+            <tr>
+              <td>{{ event.started_at|date:"d.m.Y H:i" }}</td>
+              <td>{{ event.ended_at|date:"d.m.Y H:i"|default:"—" }}</td>
+              <td>
+                {{ event.workshop.name }}
+                {% if event.section %}<br><small class="muted">{{ event.section.name }}</small>{% endif %}
+                {% if event.unit %}<br><small class="muted">{{ event.unit.name }}</small>{% endif %}
+              </td>
+              <td>
+                {{ event.fault_category.name|default:"—" }}
+                {% if event.fault_subcategory %}<br><small class="muted">{{ event.fault_subcategory.name }}</small>{% endif %}
+              </td>
+              <td class="num">{{ event.duration_min }}</td>
+              <td><a class="button secondary" href="{% url 'downtimes:detail' event.pk %}">Простой</a></td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h3>История инцидента</h3>
+      {% if case_logs %}
+        <table>
+          <thead>
+            <tr><th>Когда</th><th>Кто</th><th>Действие</th><th>Комментарий</th></tr>
+          </thead>
+          <tbody>
+            {% for log in case_logs %}
+              <tr>
+                <td>{{ log.created_at|date:"d.m.Y H:i" }}</td>
+                <td>{{ log.user.username|default:"—" }}</td>
+                <td>{{ log.get_action_display }}</td>
+                <td>{{ log.comment|default:"—" }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <p class="muted">Записей нет.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <p class="muted">
+    Дальше по этому разбору появятся: хронология, чат с упоминаниями, мероприятия
+    и согласование (этап 11.7, следующие шаги).
+  </p>
+{% endblock %}

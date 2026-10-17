@@ -15,6 +15,8 @@ from django.db.models import Q
 from django.shortcuts import get_object_or_404, render
 
 from apps.catalog.models import ItFaultCategory, Workshop
+from apps.reviews.permissions import can_manage_reviews
+from apps.reviews.services import eligible_leads
 
 from .models import DowntimeEvent
 
@@ -122,6 +124,8 @@ def downtime_list(request):
         "statuses": DowntimeEvent.Status.choices,
         "fault_sides": DowntimeEvent.FaultSide.choices,
         "sources": DowntimeEvent.Source.choices,
+        "can_manage": can_manage_reviews(request.user),
+        "leads": eligible_leads(),
     }
     return render(request, "downtimes/list.html", context)
 

@@ -47,6 +47,7 @@ INSTALLED_APPS = [
     "apps.integrations",
     "apps.reports",
     "apps.notifications",
+    "apps.reviews",
 ]
 
 MIDDLEWARE = [

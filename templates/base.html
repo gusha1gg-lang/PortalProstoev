@@ -14,6 +14,7 @@
             {% if user.is_authenticated %}
                 <a href="{% url 'reports:dashboard' %}">Дашборд</a>
                 <a href="{% url 'downtimes:list' %}">Простои</a>
+                <a href="{% url 'reviews:list' %}">Разборы</a>
                 <a href="{% url 'sla:report' %}">Потери и SLA</a>
                 <a href="{% url 'reports:sla_report' %}">SLA-отчёт</a>
                 <a href="{% url 'notifications:log' %}">Уведомления</a>
