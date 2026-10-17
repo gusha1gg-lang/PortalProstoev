@@ -13,8 +13,14 @@ from apps.accounts.roles import ROLE_DOWNTIME_SPECIALIST, ROLE_IT_MANAGER, ROLE_
 from apps.catalog.models import Workshop
 from apps.downtimes.models import DowntimeEvent
 
-from .models import IncidentReview
-from .services import create_review_from_events, eligible_leads
+from .models import IncidentReview, ReviewLog, TimelineEntry
+from .services import (
+    add_timeline_entry,
+    change_status,
+    create_review_from_events,
+    delete_timeline_entry,
+    eligible_leads,
+)
 
 # Тестовый клиент ходит по имени хоста из ALLOWED_HOSTS.
 HOST = {"HTTP_HOST": "localhost"}
@@ -190,3 +196,160 @@ class ReviewViewTests(ReviewTestBase):
         response = self.client.get("/reviews/?status=approved", **HOST)
         self.assertContains(response, r2.number)
         self.assertNotContains(response, r1.number)
+
+
+class TimelineServiceTests(ReviewTestBase):
+    def make_review(self):
+        event = self.make_event("2026-10-01 10:00", "2026-10-01 10:30")
+        review, _ = create_review_from_events(
+            [event], lead=self.specialist, created_by=self.specialist
+        )
+        return review
+
+    def test_add_timeline_entry(self):
+        review = self.make_review()
+        entry = add_timeline_entry(review, author=self.specialist, text="  Пропала связь  ")
+        self.assertEqual(entry.text, "Пропала связь")
+        self.assertEqual(entry.author, self.specialist)
+        self.assertEqual(review.timeline.count(), 1)
+        self.assertIsNotNone(entry.occurred_at)
+
+    def test_add_timeline_entry_with_time(self):
+        review = self.make_review()
+        moment = dt("2026-10-01 09:00")
+        entry = add_timeline_entry(review, author=self.specialist, text="Начало", occurred_at=moment)
+        self.assertEqual(entry.occurred_at, moment)
+
+    def test_empty_text_raises(self):
+        review = self.make_review()
+        with self.assertRaises(ValueError):
+            add_timeline_entry(review, author=self.specialist, text="   ")
+
+    def test_delete_timeline_entry(self):
+        review = self.make_review()
+        entry = add_timeline_entry(review, author=self.specialist, text="Удалить меня")
+        delete_timeline_entry(entry, user=self.specialist)
+        self.assertEqual(review.timeline.count(), 0)
+
+
+class StatusServiceTests(ReviewTestBase):
+    def make_review(self, status=IncidentReview.Status.DRAFT):
+        event = self.make_event("2026-10-01 10:00", "2026-10-01 10:30")
+        review, _ = create_review_from_events(
+            [event], lead=self.specialist, created_by=self.specialist
+        )
+        review.status = status
+        review.save(update_fields=["status"])
+        return review
+
+    def test_valid_transition(self):
+        review = self.make_review()
+        old, new = change_status(
+            review, target=IncidentReview.Status.IN_PROGRESS, user=self.specialist
+        )
+        self.assertEqual(old, "Черновик")
+        self.assertEqual(new, "В работе")
+        review.refresh_from_db()
+        self.assertEqual(review.status, IncidentReview.Status.IN_PROGRESS)
+        self.assertTrue(review.logs.filter(action=ReviewLog.Action.STATUS).exists())
+
+    def test_invalid_transition_raises(self):
+        review = self.make_review()
+        with self.assertRaises(ValueError):
+            change_status(review, target=IncidentReview.Status.APPROVED, user=self.specialist)
+
+    def test_available_transitions(self):
+        review = self.make_review()
+        targets = [target for target, _ in review.available_transitions()]
+        self.assertEqual(targets, [IncidentReview.Status.IN_PROGRESS])
+
+    def test_creation_is_logged(self):
+        review = self.make_review()
+        self.assertTrue(review.logs.filter(action=ReviewLog.Action.CREATED).exists())
+
+
+class TimelineViewTests(ReviewTestBase):
+    def make_review(self):
+        event = self.make_event("2026-10-01 10:00", "2026-10-01 10:30")
+        review, _ = create_review_from_events(
+            [event], lead=self.specialist, created_by=self.specialist
+        )
+        return review
+
+    def test_specialist_adds_timeline_entry(self):
+        review = self.make_review()
+        self.client.force_login(self.specialist)
+        response = self.client.post(
+            f"/reviews/{review.pk}/timeline/add/",
+            {"text": "Пропала связь", "occurred_at": "2026-10-01T09:30"},
+            **HOST,
+        )
+        self.assertEqual(response.status_code, 302)
+        entry = TimelineEntry.objects.get()
+        self.assertEqual(entry.text, "Пропала связь")
+        self.assertEqual(entry.occurred_at, dt("2026-10-01 09:30"))
+
+    def test_operator_cannot_add_timeline_entry(self):
+        review = self.make_review()
+        self.client.force_login(self.operator)
+        response = self.client.post(
+            f"/reviews/{review.pk}/timeline/add/", {"text": "нет прав"}, **HOST
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(TimelineEntry.objects.count(), 0)
+
+    def test_empty_timeline_entry_is_rejected(self):
+        review = self.make_review()
+        self.client.force_login(self.specialist)
+        self.client.post(f"/reviews/{review.pk}/timeline/add/", {"text": "  "}, **HOST)
+        self.assertEqual(TimelineEntry.objects.count(), 0)
+
+    def test_delete_timeline_entry_view(self):
+        review = self.make_review()
+        entry = add_timeline_entry(review, author=self.specialist, text="Удалить")
+        self.client.force_login(self.specialist)
+        response = self.client.post(
+            f"/reviews/{review.pk}/timeline/{entry.pk}/delete/", **HOST
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(TimelineEntry.objects.count(), 0)
+
+
+class StatusViewTests(ReviewTestBase):
+    def make_review(self):
+        event = self.make_event("2026-10-01 10:00", "2026-10-01 10:30")
+        review, _ = create_review_from_events(
+            [event], lead=self.specialist, created_by=self.specialist
+        )
+        return review
+
+    def test_specialist_changes_status(self):
+        review = self.make_review()
+        self.client.force_login(self.specialist)
+        response = self.client.post(
+            f"/reviews/{review.pk}/status/",
+            {"to": IncidentReview.Status.IN_PROGRESS},
+            **HOST,
+        )
+        self.assertEqual(response.status_code, 302)
+        review.refresh_from_db()
+        self.assertEqual(review.status, IncidentReview.Status.IN_PROGRESS)
+
+    def test_invalid_status_change_is_ignored(self):
+        review = self.make_review()
+        self.client.force_login(self.specialist)
+        self.client.post(
+            f"/reviews/{review.pk}/status/", {"to": IncidentReview.Status.APPROVED}, **HOST
+        )
+        review.refresh_from_db()
+        self.assertEqual(review.status, IncidentReview.Status.DRAFT)
+
+    def test_operator_cannot_change_status(self):
+        review = self.make_review()
+        self.client.force_login(self.operator)
+        response = self.client.post(
+            f"/reviews/{review.pk}/status/",
+            {"to": IncidentReview.Status.IN_PROGRESS},
+            **HOST,
+        )
+        self.assertEqual(response.status_code, 403)

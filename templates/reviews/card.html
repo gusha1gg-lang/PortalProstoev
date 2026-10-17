@@ -18,6 +18,21 @@
   </p>
 
   <div class="card-stack">
+    {% if can_edit and transitions %}
+      <div class="card">
+        <h3>Статус разбора</h3>
+        <p class="muted">
+          Сейчас: <b>{{ review.get_status_display }}</b>. Пока статус меняется вручную
+          (на шаге «Согласование» кнопка «Согласовать» станет результатом согласования).
+        </p>
+        <form method="post" action="{% url 'reviews:status' review.pk %}" class="filters">
+          {% csrf_token %}
+          {% for value, label in transitions %}
+            <button type="submit" name="to" value="{{ value }}">{{ label }}</button>
+          {% endfor %}
+        </form>
+      </div>
+    {% endif %}
     <div class="card">
       <h3>Шапка разбора</h3>
       <table class="details">
@@ -71,6 +86,57 @@
     </div>
 
     <div class="card">
+      <h3>Хронология</h3>
+      {% if can_edit %}
+        <form method="post" action="{% url 'reviews:timeline_add' review.pk %}">
+          {% csrf_token %}
+          <div class="filters">
+            <label>Когда
+              <input type="datetime-local" name="occurred_at">
+            </label>
+            <label>Запись
+              <input type="text" name="text" placeholder="что произошло" size="48">
+            </label>
+            <button type="submit">Добавить в хронологию</button>
+          </div>
+          <p class="muted">Если время не указать — запишем текущий момент.</p>
+        </form>
+      {% endif %}
+
+      {% if timeline %}
+        <table>
+          <thead>
+            <tr>
+              <th>Когда</th>
+              <th>Запись</th>
+              <th>Автор</th>
+              {% if can_edit %}<th></th>{% endif %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for entry in timeline %}
+              <tr>
+                <td>{{ entry.occurred_at|date:"d.m.Y H:i" }}</td>
+                <td>{{ entry.text|linebreaksbr }}</td>
+                <td>{{ entry.author.username|default:"—" }}</td>
+                {% if can_edit %}
+                  <td>
+                    <form method="post" action="{% url 'reviews:timeline_delete' review.pk entry.pk %}" class="inline-form">
+                      {% csrf_token %}
+                      <button type="submit" class="button secondary">Удалить</button>
+                    </form>
+                  </td>
+                {% endif %}
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <p class="muted">Записей хронологии пока нет.</p>
+      {% endif %}
+    </div>
+
+    <div class="card">
       <h3>История инцидента</h3>
       {% if case_logs %}
         <table>
@@ -91,11 +157,32 @@
       {% else %}
         <p class="muted">Записей нет.</p>
       {% endif %}
+    <div class="card">
+      <h3>История разбора</h3>
+      {% if review_logs %}
+        <table>
+          <thead>
+            <tr><th>Когда</th><th>Кто</th><th>Действие</th><th>Комментарий</th></tr>
+          </thead>
+          <tbody>
+            {% for log in review_logs %}
+              <tr>
+                <td>{{ log.created_at|date:"d.m.Y H:i" }}</td>
+                <td>{{ log.user.username|default:"—" }}</td>
+                <td>{{ log.get_action_display }}</td>
+                <td>{{ log.comment|default:"—" }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <p class="muted">Записей нет.</p>
+      {% endif %}
     </div>
   </div>
 
   <p class="muted">
-    Дальше по этому разбору появятся: хронология, чат с упоминаниями, мероприятия
+    Дальше по этому разбору появятся: чат с упоминаниями, мероприятия
     и согласование (этап 11.7, следующие шаги).
   </p>
 {% endblock %}

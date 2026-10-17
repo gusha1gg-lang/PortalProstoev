@@ -7,16 +7,25 @@
 """
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.core.exceptions import PermissionDenied
 from django.core.paginator import Paginator
 from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 
 from apps.accounts.decorators import role_required
 from apps.downtimes.models import DowntimeEvent
 
-from .models import IncidentReview
-from .permissions import REVIEW_ROLES, can_manage_reviews
-from .services import create_review_from_events, eligible_leads
+from .models import IncidentReview, TimelineEntry
+from .permissions import REVIEW_ROLES, can_edit_review, can_manage_reviews
+from .services import (
+    add_timeline_entry,
+    change_status,
+    create_review_from_events,
+    delete_timeline_entry,
+    eligible_leads,
+)
 
 # Сколько разборов показывать на одной странице.
 LIST_PER_PAGE = 50
@@ -88,7 +97,11 @@ def review_detail(request, pk):
         "case": review.case,
         "events": events,
         "case_logs": review.case.logs.select_related("user")[:20],
+        "timeline": review.timeline.select_related("author").order_by("occurred_at", "id"),
+        "review_logs": review.logs.select_related("user")[:50],
+        "transitions": review.available_transitions(),
         "can_manage": can_manage_reviews(request.user),
+        "can_edit": can_edit_review(request.user, review),
     }
     return render(request, "reviews/card.html", context)
 
@@ -122,4 +135,73 @@ def review_create(request):
             request,
             f"По этому инциденту уже есть разбор {review.number} — открываем его.",
         )
+    return redirect("reviews:detail", pk=review.pk)
+
+
+def _parse_datetime(value):
+    """Разбирает значение поля «дата и время» (datetime-local). Пустое/мусор — None."""
+    value = (value or "").strip()
+    if not value:
+        return None
+    parsed = parse_datetime(value)
+    if parsed is None:
+        return None
+    if timezone.is_naive(parsed):
+        parsed = timezone.make_aware(parsed)
+    return parsed
+
+
+@login_required
+def timeline_add(request, pk):
+    """Добавляет запись в хронологию разбора."""
+    review = get_object_or_404(IncidentReview, pk=pk)
+    if request.method != "POST":
+        return redirect("reviews:detail", pk=review.pk)
+    if not can_edit_review(request.user, review):
+        raise PermissionDenied
+
+    try:
+        add_timeline_entry(
+            review,
+            author=request.user,
+            text=request.POST.get("text"),
+            occurred_at=_parse_datetime(request.POST.get("occurred_at")),
+        )
+    except ValueError as error:
+        messages.error(request, str(error))
+    else:
+        messages.success(request, "Запись добавлена в хронологию.")
+    return redirect("reviews:detail", pk=review.pk)
+
+
+@login_required
+def timeline_delete(request, pk, entry_pk):
+    """Удаляет запись хронологии."""
+    review = get_object_or_404(IncidentReview, pk=pk)
+    if request.method != "POST":
+        return redirect("reviews:detail", pk=review.pk)
+    if not can_edit_review(request.user, review):
+        raise PermissionDenied
+
+    entry = get_object_or_404(TimelineEntry, pk=entry_pk, review=review)
+    delete_timeline_entry(entry, user=request.user)
+    messages.success(request, "Запись удалена.")
+    return redirect("reviews:detail", pk=review.pk)
+
+
+@login_required
+def status_change(request, pk):
+    """Меняет статус разбора (кнопки переходов)."""
+    review = get_object_or_404(IncidentReview, pk=pk)
+    if request.method != "POST":
+        return redirect("reviews:detail", pk=review.pk)
+    if not can_edit_review(request.user, review):
+        raise PermissionDenied
+
+    try:
+        change_status(review, target=request.POST.get("to"), user=request.user)
+    except ValueError as error:
+        messages.error(request, str(error))
+    else:
+        messages.success(request, f"Статус разбора: {review.get_status_display()}.")
     return redirect("reviews:detail", pk=review.pk)
