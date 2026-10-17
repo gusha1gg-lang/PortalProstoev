@@ -46,9 +46,9 @@ class ReviewLogAdmin(admin.ModelAdmin):
 
 @admin.register(ReviewAction)
 class ReviewActionAdmin(admin.ModelAdmin):
-    list_display = ("review", "title", "status", "due_at")
+    list_display = ("review", "title", "status", "due_at", "ticket_id")
     list_filter = ("status",)
-    search_fields = ("title", "review__number")
+    search_fields = ("title", "review__number", "ticket_id")
     filter_horizontal = ("assignees",)
 
 

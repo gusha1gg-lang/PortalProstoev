@@ -141,7 +141,8 @@
       <h3>Мероприятия (выполнено {{ actions_done }} из {{ actions|length }})</h3>
       <p class="muted">
         Что нужно сделать по итогам разбора: срок, ответственные, статус (меняется вручную).
-        Ответственные автоматически становятся участниками разбора.
+        Ответственные автоматически становятся участниками разбора. Мероприятие можно
+        отправить тикетом в **OMNITRACKER** (доп. функция; в разработке — учебный режим).
       </p>
 
       {% if actions %}
@@ -152,6 +153,7 @@
               <th>Мероприятие</th>
               <th>Ответственные</th>
               <th>Статус</th>
+              <th>OMNITRACKER</th>
               {% if can_edit %}<th>Отметить</th>{% endif %}
               {% if can_manage_this %}<th></th>{% endif %}
             </tr>
@@ -171,6 +173,24 @@
                   {% for u in action.assignees.all %}{{ u.username }}{% if not forloop.last %}, {% endif %}{% empty %}—{% endfor %}
                 </td>
                 <td>{{ action.get_status_display }}</td>
+                <td>
+                  {% if action.ticket_id %}
+                    <a href="{{ action.ticket_url }}" target="_blank" rel="noopener">{{ action.ticket_id }}</a>
+                    {% if action.ticket_group %}<br><small class="muted">{{ action.ticket_group }}</small>{% endif %}
+                  {% elif can_manage_this %}
+                    <form method="post" action="{% url 'reviews:action_send' review.pk action.pk %}" class="inline-form">
+                      {% csrf_token %}
+                      <select name="group">
+                        {% for g in omnitracker_groups %}
+                          <option value="{{ g }}">{{ g }}</option>
+                        {% endfor %}
+                      </select>
+                      <button type="submit" class="button secondary">В OMNITRACKER</button>
+                    </form>
+                  {% else %}
+                    <span class="muted">—</span>
+                  {% endif %}
+                </td>
                 {% if can_edit %}
                   <td>
                     <form method="post" action="{% url 'reviews:action_status' review.pk action.pk %}" class="inline-form">
@@ -440,7 +460,7 @@
   </div>
 
   <p class="muted">
-    Дальше по этому разбору появятся: согласование (согласуют все назначенные, можно «вернуть
-    на доработку») и отправка мероприятий в Omnitracker (этап 11.7, следующие шаги).
+    Осталось на этапе 11.7: реальный вызов OMNITRACKER на проде (сейчас — демонстрационный
+    режим, «mock»). Дальше — этап 12 «Внедрение и прод» (ждёт реквизитов).
   </p>
 {% endblock %}

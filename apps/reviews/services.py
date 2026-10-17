@@ -4,10 +4,13 @@
 - `create_review_from_events` — из одного или нескольких простоев создаёт разбор
   (несколько простоев объединяет в инцидент, чтобы не было двойного счёта);
 - `add_timeline_entry` / `delete_timeline_entry` — хронология разбора;
-- `change_status` — смена статуса разбора с проверкой допустимых переходов.
+- `change_status` — смена статуса разбора с проверкой допустимых переходов;
+- участники, чат и упоминания; мероприятия и шаблоны; согласование
+  (`sync_approvals`/`set_approver`/`approve`/`reject`); отправка мероприятия в OMNITRACKER.
 
 Логику объединения не дублируем: используем проверенные функции модуля «Простои».
 """
+
 import re
 
 from django.contrib.auth import get_user_model
@@ -311,6 +314,51 @@ def delete_review_action(action, user):
         review=review, user=user, action=ReviewLog.Action.UPDATED,
         comment=f"Удалено мероприятие «{title}»",
     )
+
+
+def send_action_to_omnitracker(action, group, user):
+    """Отправляет мероприятие тикетом в OMNITRACKER (в разработке — mock).
+
+    Дополнительная функция: если OMNITRACKER недоступен, разбор продолжает работать —
+    показываем понятную ошибку и ничего не меняем.
+    """
+    from apps.integrations.factory import get_omnitracker
+    from apps.integrations.omnitracker import OmniTrackerError
+
+    if action.ticket_id:
+        raise ValueError("Это мероприятие уже отправлено в OMNITRACKER.")
+
+    title = f"[{action.review.number}] {action.title}"
+    try:
+        ticket = get_omnitracker().create_ticket(
+            title=title,
+            description=action.description,
+            group=group,
+            due_at=action.due_at,
+        )
+    except OmniTrackerError as error:
+        raise ValueError(str(error)) from error
+
+    action.ticket_id = ticket.external_id
+    action.ticket_url = ticket.url
+    action.ticket_group = group
+    action.ticket_sent_at = timezone.now()
+    action.save(
+        update_fields=[
+            "ticket_id",
+            "ticket_url",
+            "ticket_group",
+            "ticket_sent_at",
+            "updated_at",
+        ]
+    )
+    ReviewLog.objects.create(
+        review=action.review,
+        user=user,
+        action=ReviewLog.Action.UPDATED,
+        comment=f"Мероприятие «{action.title}» отправлено в OMNITRACKER: {action.ticket_id}",
+    )
+    return action
 
 
 # --- Согласование ---

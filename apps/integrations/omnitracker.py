@@ -34,6 +34,10 @@ class BaseOmniTracker:
         """Возвращает тикеты (при передаче external_ids — только эти)."""
         raise NotImplementedError
 
+    def create_ticket(self, title, description="", group="", due_at=None) -> Ticket:
+        """Создаёт тикет. По умолчанию не поддерживается — реализуют наследники."""
+        raise NotImplementedError
+
 
 # --- Мок-тикеты (для разработки без OMNITRACKER) ---
 MOCK_TICKETS = [
@@ -55,11 +59,33 @@ MOCK_TICKETS = [
 class MockOmniTracker(BaseOmniTracker):
     """Заглушка: отдаёт встроенные тикеты. Работает без OMNITRACKER."""
 
+    # Сквозной счётчик созданных «тикетов», чтобы номера не повторялись.
+    _created = 0
+
     def fetch_tickets(self, external_ids=None) -> list[Ticket]:
         if external_ids:
             wanted = set(external_ids)
             return [t for t in MOCK_TICKETS if t.external_id in wanted]
         return list(MOCK_TICKETS)
+
+    def create_ticket(self, title, description="", group="", due_at=None) -> Ticket:
+        """Имитирует создание тикета: выдаёт номер вида INC-900001."""
+        MockOmniTracker._created += 1
+        external_id = f"INC-{900000 + MockOmniTracker._created}"
+        return Ticket(
+            external_id=external_id,
+            title=title,
+            status="Новый",
+            url=f"https://omniltracker.example/{external_id}",
+            raw={
+                "internalId": external_id,
+                "subject": title,
+                "description": description,
+                "group": group,
+                "dueAt": due_at.isoformat() if due_at else "",
+                "mock": True,
+            },
+        )
 
 
 class LiveOmniTracker(BaseOmniTracker):
@@ -103,6 +129,49 @@ class LiveOmniTracker(BaseOmniTracker):
                 )
             )
         return tickets
+
+    def create_ticket(self, title, description="", group="", due_at=None) -> Ticket:
+        """Создаёт тикет в OMNITRACKER через HTTP API."""
+        try:
+            import requests  # noqa: F401
+        except ImportError as exc:
+            raise OmniTrackerError(
+                "Не установлен модуль requests (нужен только для live-режима). "
+                "Установите: pip install requests"
+            ) from exc
+
+        if not settings.OMNITRACKER_BASE_URL:
+            raise OmniTrackerError("Не задан OMNITRACKER_BASE_URL в .env (нужен для live-режима).")
+
+        url = settings.OMNITRACKER_BASE_URL.rstrip("/") + "/api/tickets"
+        body = {
+            "subject": title,
+            "description": description,
+            "group": group,
+        }
+        if due_at:
+            body["dueAt"] = due_at.isoformat()
+        try:
+            response = requests.post(
+                url,
+                json=body,
+                auth=(settings.OMNITRACKER_USER, settings.OMNITRACKER_PASSWORD),
+                timeout=15,
+            )
+            response.raise_for_status()
+            item = response.json()
+        except Exception as exc:  # noqa: BLE001 — показываем понятную ошибку наверх
+            raise OmniTrackerError(
+                f"Не удалось создать тикет в OMNITRACKER: {exc}"
+            ) from exc
+
+        return Ticket(
+            external_id=str(item.get("internalId") or item.get("id") or ""),
+            title=item.get("subject") or title,
+            status=item.get("status") or "Новый",
+            url=item.get("url") or "",
+            raw=item,
+        )
 
 
 def tickets_to_json(tickets) -> str:

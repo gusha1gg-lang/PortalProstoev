@@ -8,6 +8,7 @@
 содержание (хронология, чат) — роли, ведущий и участники; управлять (статус,
 участники) — роли и ведущий.
 """
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
@@ -49,6 +50,7 @@ from .services import (
     reject,
     remove_message,
     remove_participant,
+    send_action_to_omnitracker,
     set_action_status,
     set_approver,
     update_review_action,
@@ -182,6 +184,7 @@ def review_detail(request, pk):
         "templates": active_templates_for(review.case.fault_category),
         "review_logs": review.logs.select_related("user")[:50],
         "participants": review.participants.select_related("user"),
+        "omnitracker_groups": settings.OMNITRACKER_GROUPS,
         "approvals": review.approvals.select_related("user"),
         "my_approval": review.approvals.filter(user=request.user).first(),
         "can_approve": can_edit_review(request.user, review)
@@ -591,4 +594,26 @@ def approver_toggle(request, pk, user_pk):
         f"{user.get_username()}: "
         + ("назначен согласующим." if is_approver else "снят с согласования."),
     )
+    return redirect("reviews:detail", pk=review.pk)
+
+
+@login_required
+def action_send_ticket(request, pk, action_pk):
+    """Отправляет мероприятие тикетом в OMNITRACKER (доп. функция; в dev — mock)."""
+    review = get_object_or_404(IncidentReview, pk=pk)
+    if request.method != "POST":
+        return redirect("reviews:detail", pk=review.pk)
+    if not can_manage_review(request.user, review):
+        raise PermissionDenied
+
+    action = get_object_or_404(review.actions, pk=action_pk)
+    group = (request.POST.get("group") or "").strip()
+    try:
+        send_action_to_omnitracker(action, group=group, user=request.user)
+    except ValueError as error:
+        messages.error(request, str(error))
+    else:
+        messages.success(
+            request, f"Мероприятие отправлено в OMNITRACKER: {action.ticket_id}."
+        )
     return redirect("reviews:detail", pk=review.pk)

@@ -6,9 +6,10 @@
 объединяются в **инцидент** (он же «кейс», `DowntimeCase`) — так сохраняется правило
 «один инцидент = один случай, без двойного счёта». Разбор ссылается на этот инцидент.
 
-Сейчас готовы шаги 1–4: «шапка» разбора (номер, ведущий, статус, связь с инцидентом),
-хронология, участники и чат с упоминаниями, мероприятия и шаблоны. На шаге 5 добавляется
-**согласование**: разбор согласуют все назначенные согласующие, можно «вернуть на доработку».
+Сейчас готовы шаги 1–6: «шапка» разбора (номер, ведущий, статус, связь с инцидентом),
+хронология, статусы, участники и чат с упоминаниями, мероприятия, шаблоны, **согласование**
+(согласуют все назначенные, можно «вернуть на доработку») и отправка мероприятия тикетом
+в **OMNITRACKER** (доп. функция; в разработке — учебный режим).
 """
 from django.conf import settings
 from django.db import models
@@ -338,6 +339,10 @@ class ReviewAction(TimeStampedModel):
     status = models.CharField(
         "Статус", max_length=16, choices=Status.choices, default=Status.PLANNED
     )
+    ticket_id = models.CharField("Тикет OMNITRACKER", max_length=128, blank=True)
+    ticket_url = models.URLField("Ссылка на тикет", blank=True)
+    ticket_group = models.CharField("Группа OMNITRACKER", max_length=128, blank=True)
+    ticket_sent_at = models.DateTimeField("Отправлено в OMNITRACKER", null=True, blank=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

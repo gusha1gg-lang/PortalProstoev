@@ -22,6 +22,7 @@ urlpatterns = [
     path("<int:pk>/actions/<int:action_pk>/edit/", views.action_edit, name="action_edit"),
     path("<int:pk>/actions/<int:action_pk>/status/", views.action_status, name="action_status"),
     path("<int:pk>/actions/<int:action_pk>/delete/", views.action_delete, name="action_delete"),
+    path("<int:pk>/actions/<int:action_pk>/send/", views.action_send_ticket, name="action_send"),
     path("templates/", views.template_list, name="templates"),
     path("templates/add/", views.template_add, name="template_add"),
     path("templates/<int:pk>/edit/", views.template_edit, name="template_edit"),

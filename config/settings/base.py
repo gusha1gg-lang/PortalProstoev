@@ -138,6 +138,16 @@ SAARC_DOWNTIME_TABLE = os.getenv("SAARC_DOWNTIME_TABLE", "DOWNTIMES")
 OMNITRACKER_BASE_URL = os.getenv("OMNITRACKER_BASE_URL", "")
 OMNITRACKER_USER = os.getenv("OMNITRACKER_USER", "")
 OMNITRACKER_PASSWORD = os.getenv("OMNITRACKER_PASSWORD", "")
+# Группы OMNITRACKER, на которые можно отправить мероприятие разбора
+# (список через запятую в .env; по умолчанию — демонстрационный набор).
+OMNITRACKER_GROUPS = [
+    group.strip()
+    for group in os.getenv(
+        "OMNITRACKER_GROUPS",
+        "Служба АРМ,Служба БД,Служба сети,АСУ ТП,ИТ-служба",
+    ).split(",")
+    if group.strip()
+]
 
 # --- Почта (уведомления, этап 8) ---
 # В разработке письма печатаются в консоль. На проде backend = SMTP (см. prod.py),

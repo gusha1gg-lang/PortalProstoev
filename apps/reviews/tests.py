@@ -40,6 +40,7 @@ from .services import (
     post_review_message,
     remove_participant,
     reject,
+    send_action_to_omnitracker,
     set_action_status,
     set_approver,
     update_review_action,
@@ -1093,3 +1094,109 @@ class ApprovalViewTests(ReviewTestBase):
         response = self.client.get(f"/reviews/{review.pk}/", **HOST)
         self.assertContains(response, "Согласование")
         self.assertContains(response, "ждём решения")
+
+
+class OmnitrackerTests(ReviewTestBase):
+    def make_review(self):
+        event = self.make_event("2026-10-01 10:00", "2026-10-01 10:30")
+        review, _ = create_review_from_events(
+            [event], lead=self.specialist, created_by=self.specialist
+        )
+        return review
+
+    def test_mock_create_ticket_returns_number(self):
+        from apps.integrations.factory import get_omnitracker
+
+        ticket = get_omnitracker().create_ticket("Тест", description="d", group="Служба АРМ")
+        self.assertTrue(ticket.external_id.startswith("INC-"))
+        self.assertTrue(ticket.url)
+        self.assertEqual(ticket.status, "Новый")
+
+    def test_send_action_sets_ticket_fields_and_logs(self):
+        review = self.make_review()
+        action = add_review_action(review, created_by=self.specialist, title="Проверить АРМ")
+        send_action_to_omnitracker(action, group="Служба АРМ", user=self.specialist)
+        action.refresh_from_db()
+        self.assertTrue(action.ticket_id.startswith("INC-"))
+        self.assertEqual(action.ticket_group, "Служба АРМ")
+        self.assertIsNotNone(action.ticket_sent_at)
+        self.assertTrue(
+            ReviewLog.objects.filter(review=review, comment__contains="OMNITRACKER").exists()
+        )
+
+    def test_sending_twice_raises(self):
+        review = self.make_review()
+        action = add_review_action(review, created_by=self.specialist, title="Задача")
+        send_action_to_omnitracker(action, group="ИТ-служба", user=self.specialist)
+        with self.assertRaises(ValueError):
+            send_action_to_omnitracker(action, group="ИТ-служба", user=self.specialist)
+
+
+class OmnitrackerViewTests(ReviewTestBase):
+    def make_review(self):
+        event = self.make_event("2026-10-01 10:00", "2026-10-01 10:30")
+        review, _ = create_review_from_events(
+            [event], lead=self.specialist, created_by=self.specialist
+        )
+        return review
+
+    def test_specialist_sends_ticket(self):
+        review = self.make_review()
+        action = add_review_action(review, created_by=self.specialist, title="Задача")
+        self.client.force_login(self.specialist)
+        response = self.client.post(
+            f"/reviews/{review.pk}/actions/{action.pk}/send/",
+            {"group": "Служба БД"},
+            **HOST,
+        )
+        self.assertEqual(response.status_code, 302)
+        action.refresh_from_db()
+        self.assertTrue(action.ticket_id)
+        self.assertEqual(action.ticket_group, "Служба БД")
+
+    def test_participant_cannot_send_ticket(self):
+        review = self.make_review()
+        action = add_review_action(review, created_by=self.specialist, title="Задача")
+        add_participant(review, self.operator, by=self.specialist)
+        self.client.force_login(self.operator)
+        response = self.client.post(
+            f"/reviews/{review.pk}/actions/{action.pk}/send/",
+            {"group": "Служба БД"},
+            **HOST,
+        )
+        self.assertEqual(response.status_code, 403)
+        action.refresh_from_db()
+        self.assertEqual(action.ticket_id, "")
+
+    def test_card_shows_ticket_link(self):
+        review = self.make_review()
+        action = add_review_action(review, created_by=self.specialist, title="Задача")
+        send_action_to_omnitracker(action, group="ИТ-служба", user=self.specialist)
+        action.refresh_from_db()
+        self.client.force_login(self.specialist)
+        response = self.client.get(f"/reviews/{review.pk}/", **HOST)
+        self.assertContains(response, action.ticket_id)
+
+    def test_card_shows_group_select_before_send(self):
+        review = self.make_review()
+        add_review_action(review, created_by=self.specialist, title="Задача")
+        self.client.force_login(self.specialist)
+        response = self.client.get(f"/reviews/{review.pk}/", **HOST)
+        self.assertContains(response, "В OMNITRACKER")
+
+
+class OmnitrackerAdapterTests(TestCase):
+    def test_live_create_without_base_url_raises(self):
+        from apps.integrations.omnitracker import LiveOmniTracker, OmniTrackerError
+
+        with self.settings(OMNITRACKER_BASE_URL=""):
+            with self.assertRaises(OmniTrackerError):
+                LiveOmniTracker().create_ticket("Тест")
+
+    def test_mock_creates_unique_ids(self):
+        from apps.integrations.omnitracker import MockOmniTracker
+
+        client = MockOmniTracker()
+        first = client.create_ticket("Первый")
+        second = client.create_ticket("Второй")
+        self.assertNotEqual(first.external_id, second.external_id)
