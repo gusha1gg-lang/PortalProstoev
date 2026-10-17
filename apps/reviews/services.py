@@ -8,18 +8,31 @@
 
 Логику объединения не дублируем: используем проверенные функции модуля «Простои».
 """
+import re
+
 from django.contrib.auth import get_user_model
+from django.urls import reverse
 from django.utils import timezone
 
 from apps.downtimes.services import create_case_from_events
+from apps.notifications.services import notify_review_mention
 
-from .models import STATUS_TRANSITIONS, IncidentReview, ReviewLog, TimelineEntry
+from .models import (
+    STATUS_TRANSITIONS,
+    IncidentReview,
+    ReviewLog,
+    ReviewMessage,
+    ReviewParticipant,
+    TimelineEntry,
+)
+from .permissions import REVIEW_ROLES
+
+# Как выглядит упоминание в тексте: @логин. Логин может содержать буквы, цифры и . @ + - _.
+MENTION_RE = re.compile(r"@([\w.@+-]+)")
 
 
 def eligible_leads():
     """Пользователи, которых можно назначить ведущим разбора (по ролям)."""
-    from .permissions import REVIEW_ROLES
-
     return (
         get_user_model()
         .objects.filter(groups__name__in=REVIEW_ROLES)
@@ -102,3 +115,87 @@ def change_status(review, target, user):
         comment=f"{old} → {review.get_status_display()}",
     )
     return old, review.get_status_display()
+
+
+# --- Участники ---
+
+def add_participant(review, user, is_approver=False, by=None):
+    """Добавляет участника в разбор. Возвращает пару (участник, создан_ли_новый)."""
+    participant, created = ReviewParticipant.objects.get_or_create(
+        review=review, user=user, defaults={"is_approver": is_approver}
+    )
+    if created:
+        ReviewLog.objects.create(
+            review=review,
+            user=by,
+            action=ReviewLog.Action.UPDATED,
+            comment=f"Добавлен участник {user.get_username()}",
+        )
+    return participant, created
+
+
+def remove_participant(review, user, by=None):
+    """Убирает участника из разбора. Возвращает True, если участник был."""
+    deleted, _ = ReviewParticipant.objects.filter(review=review, user=user).delete()
+    if deleted:
+        ReviewLog.objects.create(
+            review=review,
+            user=by,
+            action=ReviewLog.Action.UPDATED,
+            comment=f"Удалён участник {user.get_username()}",
+        )
+    return bool(deleted)
+
+
+# --- Чат и упоминания ---
+
+def extract_mentions(text):
+    """Возвращает список логинов, упомянутых через @ (без повторов, в порядке появления)."""
+    seen = []
+    for login in MENTION_RE.findall(text or ""):
+        if login not in seen:
+            seen.append(login)
+    return seen
+
+
+def post_review_message(review, author, text, request=None):
+    """Пишет сообщение в чат разбора.
+
+    Упомянутых (`@логин`) автоматически делаем участниками и шлём им письмо
+    «вас упомянули…». Возвращает сообщение.
+    """
+    text = (text or "").strip()
+    if not text:
+        raise ValueError("Сообщение не может быть пустым.")
+
+    message = ReviewMessage.objects.create(review=review, author=author, text=text)
+
+    usernames = MENTION_RE.findall(text)
+    if usernames:
+        mentioned = list(
+            get_user_model().objects.filter(username__in=set(usernames)).distinct()
+        )
+        message.mentions.set(mentioned)
+
+        url = ""
+        if request is not None:
+            try:
+                url = request.build_absolute_uri(reverse("reviews:detail", args=[review.pk]))
+            except Exception:  # noqa: BLE001 — ссылка не критична для письма
+                url = ""
+
+        for user in mentioned:
+            if user.pk == getattr(author, "pk", None):
+                continue  # себя не приглашаем и не уведомляем
+            add_participant(review, user, by=author)
+            notify_review_mention(review, text, user, author=author, url=url)
+    return message
+
+
+def remove_message(message, user):
+    """Удаляет сообщение чата и отмечает это в истории разбора."""
+    ReviewLog.objects.create(
+        review=message.review, user=user, action=ReviewLog.Action.UPDATED,
+        comment="Удалено сообщение чата",
+    )
+    message.delete()

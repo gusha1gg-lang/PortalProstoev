@@ -25,6 +25,7 @@ class NotificationRule(TimeStampedModel):
         SLA_WARNING = "sla_warning", "Предупреждение SLA (приближение к лимиту)"
         SLA_BREACH = "sla_breach", "Эскалация SLA (лимит превышен)"
         DIGEST = "digest", "Периодическая сводка"
+        MENTION = "mention", "Упоминание в чате разбора простоя"
 
     class Channel(models.TextChoices):
         EMAIL = "email", "Email"

@@ -137,6 +137,105 @@
     </div>
 
     <div class="card">
+      <h3>Чат разбора</h3>
+      <p class="muted">
+        Обсуждайте разбор здесь. Чтобы позвать коллегу, упомяните его по логину:
+        <b>@логин</b> — ему придёт письмо «вас упомянули…», и он станет участником разбора.
+      </p>
+
+      {% if chat %}
+        <div class="chat">
+          {% for item in chat %}
+            <div class="chat-message">
+              <div class="chat-head">
+                <b>{{ item.message.author.username|default:"—" }}</b>
+                <span class="muted">{{ item.message.created_at|date:"d.m.Y H:i" }}</span>
+                {% if item.message.mentions.all %}
+                  <span class="muted">упомянул:
+                    {% for m in item.message.mentions.all %}@{{ m.username }} {% endfor %}
+                  </span>
+                {% endif %}
+                {% if can_manage_this %}
+                  <form method="post" action="{% url 'reviews:message_delete' review.pk item.message.pk %}" class="inline-form">
+                    {% csrf_token %}
+                    <button type="submit" class="button secondary">Удалить</button>
+                  </form>
+                {% endif %}
+              </div>
+              <div class="chat-text">{{ item.html }}</div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="muted">Сообщений пока нет.</p>
+      {% endif %}
+
+      {% if can_edit %}
+        <form method="post" action="{% url 'reviews:message_add' review.pk %}">
+          {% csrf_token %}
+          <div class="filters">
+            <label>Сообщение
+              <input type="text" name="text" placeholder="написать и позвать через @логин" size="52">
+            </label>
+            <button type="submit">Отправить</button>
+          </div>
+        </form>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <h3>Участники ({{ participants|length }})</h3>
+      <p class="muted">
+        Ведущий: <b>{{ review.lead.username }}</b>. Участники видят разбор и пишут в чат.
+        На согласовании участвует тот, у кого отмечено «согласующий».
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>Пользователь</th>
+            <th>Роль</th>
+            {% if can_manage_this %}<th></th>{% endif %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in participants %}
+            <tr>
+              <td>{{ p.user.username }}</td>
+              <td>{% if p.is_approver %}согласующий{% else %}участник{% endif %}</td>
+              {% if can_manage_this %}
+                <td>
+                  <form method="post" action="{% url 'reviews:participant_remove' review.pk p.user.pk %}" class="inline-form">
+                    {% csrf_token %}
+                    <button type="submit" class="button secondary">Убрать</button>
+                  </form>
+                </td>
+              {% endif %}
+            </tr>
+          {% empty %}
+            <tr>
+              <td colspan="{% if can_manage_this %}3{% else %}2{% endif %}" class="muted">
+                Пока никого. Участники добавляются вручную или через упоминание в чате.
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% if can_manage_this %}
+        <form method="post" action="{% url 'reviews:participant_add' review.pk %}" class="filters">
+          {% csrf_token %}
+          <label>Добавить участника
+            <select name="user">
+              {% for u in all_users %}
+                <option value="{{ u.id }}">{{ u.username }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <button type="submit">Добавить</button>
+        </form>
+      {% endif %}
+    </div>
+
+    <div class="card">
       <h3>История инцидента</h3>
       {% if case_logs %}
         <table>
@@ -157,6 +256,8 @@
       {% else %}
         <p class="muted">Записей нет.</p>
       {% endif %}
+    </div>
+
     <div class="card">
       <h3>История разбора</h3>
       {% if review_logs %}
@@ -182,7 +283,7 @@
   </div>
 
   <p class="muted">
-    Дальше по этому разбору появятся: чат с упоминаниями, мероприятия
-    и согласование (этап 11.7, следующие шаги).
+    Дальше по этому разбору появятся: мероприятия (срок, ответственные) и согласование
+    (этап 11.7, следующие шаги).
   </p>
 {% endblock %}

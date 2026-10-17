@@ -1,11 +1,15 @@
 """
-Страницы модуля «Разбор простоя» (этап 11.7, шаг 1).
+Страницы модуля «Разбор простоя» (этап 11.7).
 
-Список разборов, карточка разбора и создание разбора из выбранных простоев.
-Просмотр — любому вошедшему (как простои и отчёты). Создание и ведение — ролям
-«Специалист по простоям», «Руководитель ИТ», «Администратор».
+Список разборов, карточка разбора, создание разбора из выбранных простоев,
+хронология и статусы, участники и чат с упоминаниями (`@логин` → письмо).
+
+Видеть разбор может ведущий, автор, участники и роли `REVIEW_ROLES`; вести
+содержание (хронология, чат) — роли, ведущий и участники; управлять (статус,
+участники) — роли и ведущий.
 """
 from django.contrib import messages
+from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.core.paginator import Paginator
@@ -13,18 +17,32 @@ from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
+from django.utils.html import escape
+from django.utils.safestring import mark_safe
 
 from apps.accounts.decorators import role_required
 from apps.downtimes.models import DowntimeEvent
 
-from .models import IncidentReview, TimelineEntry
-from .permissions import REVIEW_ROLES, can_edit_review, can_manage_reviews
+from .models import IncidentReview
+from .permissions import (
+    REVIEW_ROLES,
+    can_edit_review,
+    can_manage_review,
+    can_manage_reviews,
+    can_view_review,
+    visible_reviews,
+)
 from .services import (
+    MENTION_RE,
+    add_participant,
     add_timeline_entry,
     change_status,
     create_review_from_events,
     delete_timeline_entry,
     eligible_leads,
+    post_review_message,
+    remove_message,
+    remove_participant,
 )
 
 # Сколько разборов показывать на одной странице.
@@ -41,10 +59,33 @@ def _resolve_lead(request):
     return request.user
 
 
+def _render_message(text):
+    """Экранирует текст сообщения и подсвечивает упоминания `@логин`."""
+    safe = escape(text or "")
+    return mark_safe(MENTION_RE.sub(r'<span class="mention">@\1</span>', safe))
+
+
+def _parse_datetime(value):
+    """Разбирает значение поля «дата и время» (datetime-local). Пустое/мусор — None."""
+    value = (value or "").strip()
+    if not value:
+        return None
+    parsed = parse_datetime(value)
+    if parsed is None:
+        return None
+    if timezone.is_naive(parsed):
+        parsed = timezone.make_aware(parsed)
+    return parsed
+
+
 @login_required
 def review_list(request):
-    """Список разборов с фильтрами по статусу, ведущему и поиском."""
-    reviews = IncidentReview.objects.select_related("case", "lead").order_by("-created_at")
+    """Список разборов, видимых пользователю, с фильтрами."""
+    reviews = (
+        visible_reviews(request.user)
+        .select_related("case", "lead")
+        .order_by("-created_at")
+    )
 
     get = request.GET
     filters = {
@@ -84,13 +125,21 @@ def review_list(request):
 
 @login_required
 def review_detail(request, pk):
-    """Карточка разбора: шапка, входящие простои, история инцидента."""
+    """Карточка разбора: шапка, входящие простои, хронология, чат, участники, история."""
     review = get_object_or_404(
         IncidentReview.objects.select_related("case", "lead", "created_by"), pk=pk
     )
+    if not can_view_review(request.user, review):
+        raise PermissionDenied
+
     events = review.events.select_related(
         "workshop", "section", "unit", "fault_category", "fault_subcategory"
     ).order_by("started_at")
+
+    chat = [
+        {"message": message, "html": _render_message(message.text)}
+        for message in review.messages.select_related("author").prefetch_related("mentions")
+    ]
 
     context = {
         "review": review,
@@ -98,10 +147,14 @@ def review_detail(request, pk):
         "events": events,
         "case_logs": review.case.logs.select_related("user")[:20],
         "timeline": review.timeline.select_related("author").order_by("occurred_at", "id"),
+        "chat": chat,
         "review_logs": review.logs.select_related("user")[:50],
+        "participants": review.participants.select_related("user"),
+        "all_users": get_user_model().objects.filter(is_active=True).order_by("username"),
         "transitions": review.available_transitions(),
         "can_manage": can_manage_reviews(request.user),
         "can_edit": can_edit_review(request.user, review),
+        "can_manage_this": can_manage_review(request.user, review),
     }
     return render(request, "reviews/card.html", context)
 
@@ -138,19 +191,6 @@ def review_create(request):
     return redirect("reviews:detail", pk=review.pk)
 
 
-def _parse_datetime(value):
-    """Разбирает значение поля «дата и время» (datetime-local). Пустое/мусор — None."""
-    value = (value or "").strip()
-    if not value:
-        return None
-    parsed = parse_datetime(value)
-    if parsed is None:
-        return None
-    if timezone.is_naive(parsed):
-        parsed = timezone.make_aware(parsed)
-    return parsed
-
-
 @login_required
 def timeline_add(request, pk):
     """Добавляет запись в хронологию разбора."""
@@ -183,7 +223,7 @@ def timeline_delete(request, pk, entry_pk):
     if not can_edit_review(request.user, review):
         raise PermissionDenied
 
-    entry = get_object_or_404(TimelineEntry, pk=entry_pk, review=review)
+    entry = get_object_or_404(review.timeline, pk=entry_pk)
     delete_timeline_entry(entry, user=request.user)
     messages.success(request, "Запись удалена.")
     return redirect("reviews:detail", pk=review.pk)
@@ -195,7 +235,7 @@ def status_change(request, pk):
     review = get_object_or_404(IncidentReview, pk=pk)
     if request.method != "POST":
         return redirect("reviews:detail", pk=review.pk)
-    if not can_edit_review(request.user, review):
+    if not can_manage_review(request.user, review):
         raise PermissionDenied
 
     try:
@@ -204,4 +244,74 @@ def status_change(request, pk):
         messages.error(request, str(error))
     else:
         messages.success(request, f"Статус разбора: {review.get_status_display()}.")
+    return redirect("reviews:detail", pk=review.pk)
+
+
+@login_required
+def message_add(request, pk):
+    """Добавляет сообщение в чат разбора (упоминания `@логин` → письмо)."""
+    review = get_object_or_404(IncidentReview, pk=pk)
+    if request.method != "POST":
+        return redirect("reviews:detail", pk=review.pk)
+    if not can_edit_review(request.user, review):
+        raise PermissionDenied
+
+    try:
+        post_review_message(review, author=request.user, text=request.POST.get("text"),
+                            request=request)
+    except ValueError as error:
+        messages.error(request, str(error))
+    return redirect("reviews:detail", pk=review.pk)
+
+
+@login_required
+def message_delete(request, pk, message_pk):
+    """Удаляет сообщение чата (роли и ведущий)."""
+    review = get_object_or_404(IncidentReview, pk=pk)
+    if request.method != "POST":
+        return redirect("reviews:detail", pk=review.pk)
+    if not can_manage_review(request.user, review):
+        raise PermissionDenied
+
+    message = get_object_or_404(review.messages, pk=message_pk)
+    remove_message(message, user=request.user)
+    messages.success(request, "Сообщение удалено.")
+    return redirect("reviews:detail", pk=review.pk)
+
+
+@login_required
+def participant_add(request, pk):
+    """Добавляет участника в разбор."""
+    review = get_object_or_404(IncidentReview, pk=pk)
+    if request.method != "POST":
+        return redirect("reviews:detail", pk=review.pk)
+    if not can_manage_review(request.user, review):
+        raise PermissionDenied
+
+    user_id = (request.POST.get("user") or "").strip()
+    user = get_user_model().objects.filter(pk=user_id, is_active=True).first() if user_id.isdigit() else None
+    if user is None:
+        messages.error(request, "Выберите пользователя.")
+    else:
+        _, created = add_participant(review, user, by=request.user)
+        if created:
+            messages.success(request, f"Участник {user.username} добавлен.")
+        else:
+            messages.info(request, f"{user.username} уже участвует в разборе.")
+    return redirect("reviews:detail", pk=review.pk)
+
+
+@login_required
+def participant_remove(request, pk, user_pk):
+    """Убирает участника из разбора."""
+    review = get_object_or_404(IncidentReview, pk=pk)
+    if request.method != "POST":
+        return redirect("reviews:detail", pk=review.pk)
+    if not can_manage_review(request.user, review):
+        raise PermissionDenied
+
+    user = get_user_model().objects.filter(pk=user_pk).first()
+    if user is not None:
+        remove_participant(review, user, by=request.user)
+        messages.success(request, f"Участник {user.username} убран.")
     return redirect("reviews:detail", pk=review.pk)

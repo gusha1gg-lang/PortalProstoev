@@ -230,6 +230,14 @@ table.details th { width: 220px; }
 .pager { display: flex; align-items: center; gap: 12px; margin-top: 16px; }
 th.pick, td.pick { width: 36px; text-align: center; }
 
+/* Чат разбора (этап 11.7) */
+.chat { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+.chat-message { border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; }
+.chat-head { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+.chat-head .inline-form { margin-left: auto; }
+.chat-text { white-space: normal; }
+.mention { color: var(--accent-dark); font-weight: 600; }
+
 @media print {
     .topbar, .filters, .no-print { display: none !important; }
     .print-header { display: block; }

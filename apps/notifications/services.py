@@ -267,6 +267,39 @@ def send_digest(now=None) -> list[NotificationLog]:
     return logs
 
 
+def notify_review_mention(review, text: str, mentioned_user, author=None, url: str = ""):
+    """Письмо «вас упомянули в чате разбора простоя».
+
+    Шлём только упомянутым (по `@логин`), а не всем участникам. Возвращает запись журнала
+    или None, если у пользователя нет адреса почты.
+    """
+    if not mentioned_user.email:
+        return None
+
+    subject = f"Вас упомянули в разборе простоя {review.number}"
+    body = (
+        f"Вас упомянули в чате разбора простоя №{review.number} ({review.title}), "
+        f"ждём вашего ответа.\n\n"
+        f"Автор сообщения: {author.get_username() if author else '—'}\n\n"
+        f"Сообщение:\n{text}\n"
+    )
+    if url:
+        body += f"\nОткрыть разбор: {url}\n"
+
+    status, error = get_channel(NotificationRule.Channel.EMAIL).send(
+        Message(subject=subject, body=body, recipients=[mentioned_user.email])
+    )
+    return NotificationLog.objects.create(
+        event=NotificationRule.Event.MENTION,
+        channel=NotificationRule.Channel.EMAIL,
+        recipients=mentioned_user.email,
+        subject=subject,
+        status=status,
+        error=error,
+        sent_at=timezone.now() if status == NotificationLog.Status.SENT else None,
+    )
+
+
 def send_test(to_email: str) -> str:
     """Отправляет проверочное письмо на адрес (для команды notify_test)."""
     status, error = get_channel(NotificationRule.Channel.EMAIL).send(

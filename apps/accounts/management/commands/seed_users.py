@@ -21,12 +21,13 @@ from apps.accounts.roles import (
 
 DEMO_PASSWORD = "DevPortal2026!"
 
-# Логин → (имя, роль портала)
+# Логин → (имя, роль портала, почта для демонстрации писем).
+# Почта условная: в разработке письма не уходят наружу, а печатаются в консоль.
 DEMO_USERS = [
-    ("operator", ("Оператор смены", ROLE_OPERATOR)),
-    ("specialist", ("Специалист по простоям", ROLE_DOWNTIME_SPECIALIST)),
-    ("it_manager", ("Руководитель ИТ", ROLE_IT_MANAGER)),
-    ("management", ("Руководство предприятия", ROLE_MANAGEMENT)),
+    ("operator", ("Оператор смены", ROLE_OPERATOR, "operator@example.local")),
+    ("specialist", ("Специалист по простоям", ROLE_DOWNTIME_SPECIALIST, "specialist@example.local")),
+    ("it_manager", ("Руководитель ИТ", ROLE_IT_MANAGER, "it_manager@example.local")),
+    ("management", ("Руководство предприятия", ROLE_MANAGEMENT, "management@example.local")),
 ]
 
 
@@ -38,15 +39,19 @@ class Command(BaseCommand):
         User = get_user_model()
         created_count = 0
 
-        for username, (full_name, role) in DEMO_USERS:
+        for username, (full_name, role, email) in DEMO_USERS:
             user, created = User.objects.get_or_create(
                 username=username,
-                defaults={"first_name": full_name, "is_staff": False},
+                defaults={"first_name": full_name, "is_staff": False, "email": email},
             )
             if created:
                 user.set_password(DEMO_PASSWORD)
                 user.save()
                 created_count += 1
+            elif not user.email:
+                # У пользователей, созданных раньше, почты не было — добавим для показа писем.
+                user.email = email
+                user.save(update_fields=["email"])
 
             group = Group.objects.filter(name=role).first()
             if group is not None:

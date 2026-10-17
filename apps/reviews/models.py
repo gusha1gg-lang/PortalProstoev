@@ -100,6 +100,74 @@ STATUS_TRANSITIONS = {
 }
 
 
+class ReviewParticipant(TimeStampedModel):
+    """Участник разбора: допущен к разбору, может писать в чат.
+
+    `is_approver` используется на шаге согласования: согласуют все назначенные.
+    """
+
+    review = models.ForeignKey(
+        IncidentReview,
+        on_delete=models.CASCADE,
+        related_name="participants",
+        verbose_name="Разбор",
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="review_participations",
+        verbose_name="Пользователь",
+    )
+    is_approver = models.BooleanField("Согласующий", default=False)
+
+    class Meta:
+        verbose_name = "Участник разбора"
+        verbose_name_plural = "Участники разбора"
+        ordering = ["user__username"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["review", "user"], name="uniq_review_participant"
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.user} · {self.review.number}"
+
+
+class ReviewMessage(TimeStampedModel):
+    """Сообщение чата разбора. Упоминания — по `@логин`."""
+
+    review = models.ForeignKey(
+        IncidentReview,
+        on_delete=models.CASCADE,
+        related_name="messages",
+        verbose_name="Разбор",
+    )
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="review_messages",
+        verbose_name="Автор",
+        null=True,
+        blank=True,
+    )
+    text = models.TextField("Сообщение")
+    mentions = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        related_name="mentioned_in_messages",
+        verbose_name="Упоминания",
+        blank=True,
+    )
+
+    class Meta:
+        verbose_name = "Сообщение чата разбора"
+        verbose_name_plural = "Сообщения чата разбора"
+        ordering = ["created_at", "id"]
+
+    def __str__(self):
+        return f"{self.review.number} · {self.author} · {self.created_at:%d.%m.%Y %H:%M}"
+
+
 class TimelineEntry(TimeStampedModel):
     """Запись хронологии разбора: когда что произошло (время + текст + автор)."""
 
