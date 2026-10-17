@@ -63,6 +63,7 @@
   {% endfor %}
 
   <p class="muted">
-    <a href="{% url 'integrations:sync' %}">← К синхронизации</a>
+    <a href="{% url 'integrations:sync' %}">← К синхронизации</a> ·
+    <a href="{% url 'catalog:structure' %}">Производственная структура (цеха → участки → агрегаты)</a>
   </p>
 {% endblock %}

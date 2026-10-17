@@ -232,3 +232,165 @@ class ClassificationViewTests(TestCase):
         self.client.force_login(self._user("sp", role=ROLE_DOWNTIME_SPECIALIST))
         response = self.client.get("/catalog/", **HOST)
         self.assertEqual(response.status_code, 200)
+
+
+class StructureEditorTests(TestCase):
+    """Ручная правка производственной структуры в портале (план 11.6, В9)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        for role in ALL_ROLES:
+            Group.objects.get_or_create(name=role)
+        cls.workshop = Workshop.objects.create(name="Цех-42")
+        cls.section = Section.objects.create(workshop=cls.workshop, name="Участок-1")
+        cls.unit = Unit.objects.create(
+            section=cls.section, name="Агрегат-1", criticality=Unit.Criticality.MEDIUM
+        )
+
+    def _user(self, username, role=None):
+        user = get_user_model().objects.create_user(username=username, password="x")
+        if role:
+            user.groups.add(Group.objects.get(name=role))
+        return user
+
+    def test_structure_page_denied_without_role(self):
+        self.client.force_login(self._user("nobody", role=ROLE_OPERATOR))
+        response = self.client.get("/catalog/structure/", **HOST)
+        self.assertEqual(response.status_code, 403)
+
+    def test_structure_page_allowed_for_it_manager(self):
+        self.client.force_login(self._user("itm", role=ROLE_IT_MANAGER))
+        response = self.client.get("/catalog/structure/", **HOST)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Цех-42")
+
+    def test_add_workshop(self):
+        self.client.force_login(self._user("itm", role=ROLE_IT_MANAGER))
+        response = self.client.post(
+            "/catalog/structure/workshop/add/", {"name": "Цех-43", "code": "C43"}, **HOST
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(Workshop.objects.filter(name="Цех-43", code="C43", is_active=True).exists())
+
+    def test_add_workshop_duplicate_name_rejected(self):
+        self.client.force_login(self._user("itm", role=ROLE_IT_MANAGER))
+        self.client.post("/catalog/structure/workshop/add/", {"name": "Цех-42"}, **HOST)
+        self.assertEqual(Workshop.objects.filter(name="Цех-42").count(), 1)
+
+    def test_edit_workshop_renames(self):
+        self.client.force_login(self._user("itm", role=ROLE_IT_MANAGER))
+        self.client.post(
+            f"/catalog/structure/workshop/{self.workshop.pk}/",
+            {"name": "Цех-42 переименован", "code": "C42", "is_active": "on"},
+            **HOST,
+        )
+        self.workshop.refresh_from_db()
+        self.assertEqual(self.workshop.name, "Цех-42 переименован")
+        self.assertTrue(self.workshop.is_active)
+
+    def test_toggle_workshop_hides_without_deleting(self):
+        self.client.force_login(self._user("itm", role=ROLE_IT_MANAGER))
+        self.client.post(f"/catalog/structure/workshop/{self.workshop.pk}/toggle/", **HOST)
+        self.workshop.refresh_from_db()
+        self.assertFalse(self.workshop.is_active)
+        self.client.post(f"/catalog/structure/workshop/{self.workshop.pk}/toggle/", **HOST)
+        self.workshop.refresh_from_db()
+        self.assertTrue(self.workshop.is_active)
+        self.assertEqual(Workshop.objects.count(), 1)
+
+    def test_add_section_to_workshop(self):
+        self.client.force_login(self._user("itm", role=ROLE_IT_MANAGER))
+        self.client.post(
+            f"/catalog/structure/workshop/{self.workshop.pk}/section/add/",
+            {"name": "Участок-2"},
+            **HOST,
+        )
+        self.assertTrue(
+            Section.objects.filter(workshop=self.workshop, name="Участок-2").exists()
+        )
+
+    def test_duplicate_section_in_same_workshop_rejected(self):
+        self.client.force_login(self._user("itm", role=ROLE_IT_MANAGER))
+        self.client.post(
+            f"/catalog/structure/workshop/{self.workshop.pk}/section/add/",
+            {"name": "Участок-1"},
+            **HOST,
+        )
+        self.assertEqual(Section.objects.filter(workshop=self.workshop, name="Участок-1").count(), 1)
+
+    def test_add_section_allowed_with_same_name_in_other_workshop(self):
+        self.client.force_login(self._user("itm", role=ROLE_IT_MANAGER))
+        other = Workshop.objects.create(name="Цех-44")
+        self.client.post(
+            f"/catalog/structure/workshop/{other.pk}/section/add/", {"name": "Участок-1"}, **HOST
+        )
+        self.assertTrue(Section.objects.filter(workshop=other, name="Участок-1").exists())
+
+    def test_edit_section_renames(self):
+        self.client.force_login(self._user("itm", role=ROLE_IT_MANAGER))
+        self.client.post(
+            f"/catalog/structure/section/{self.section.pk}/",
+            {"name": "Участок-1 новый", "code": "", "is_active": "on"},
+            **HOST,
+        )
+        self.section.refresh_from_db()
+        self.assertEqual(self.section.name, "Участок-1 новый")
+
+    def test_toggle_section_redirects_to_its_workshop(self):
+        self.client.force_login(self._user("itm", role=ROLE_IT_MANAGER))
+        response = self.client.post(
+            f"/catalog/structure/section/{self.section.pk}/toggle/", **HOST
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response.url.endswith(f"/catalog/structure/workshop/{self.workshop.pk}/"))
+        self.section.refresh_from_db()
+        self.assertFalse(self.section.is_active)
+
+    def test_add_unit_to_section_with_criticality(self):
+        self.client.force_login(self._user("itm", role=ROLE_IT_MANAGER))
+        self.client.post(
+            f"/catalog/structure/section/{self.section.pk}/unit/add/",
+            {"name": "Агрегат-2", "criticality": "critical"},
+            **HOST,
+        )
+        unit = Unit.objects.get(section=self.section, name="Агрегат-2")
+        self.assertEqual(unit.criticality, Unit.Criticality.CRITICAL)
+        # Цех агрегата выводится из участка автоматически (В1).
+        self.assertEqual(unit.workshop_id, self.workshop.pk)
+
+    def test_duplicate_unit_in_same_section_rejected(self):
+        self.client.force_login(self._user("itm", role=ROLE_IT_MANAGER))
+        self.client.post(
+            f"/catalog/structure/section/{self.section.pk}/unit/add/",
+            {"name": "Агрегат-1"},
+            **HOST,
+        )
+        self.assertEqual(Unit.objects.filter(section=self.section, name="Агрегат-1").count(), 1)
+
+    def test_add_sectionless_workshop_unit(self):
+        self.client.force_login(self._user("itm", role=ROLE_IT_MANAGER))
+        self.client.post(
+            f"/catalog/structure/workshop/{self.workshop.pk}/unit/add/",
+            {"name": "Компрессорная цеха", "criticality": "high"},
+            **HOST,
+        )
+        unit = Unit.objects.get(workshop=self.workshop, section=None, name="Компрессорная цеха")
+        self.assertEqual(unit.criticality, Unit.Criticality.HIGH)
+
+    def test_edit_unit_renames_and_changes_criticality(self):
+        self.client.force_login(self._user("itm", role=ROLE_IT_MANAGER))
+        self.client.post(
+            f"/catalog/structure/unit/{self.unit.pk}/edit/",
+            {"name": "Агрегат-1 новый", "criticality": "low"},
+            **HOST,
+        )
+        self.unit.refresh_from_db()
+        self.assertEqual(self.unit.name, "Агрегат-1 новый")
+        self.assertEqual(self.unit.criticality, Unit.Criticality.LOW)
+
+    def test_toggle_unit_hides_without_deleting(self):
+        self.client.force_login(self._user("itm", role=ROLE_IT_MANAGER))
+        self.client.post(f"/catalog/structure/unit/{self.unit.pk}/toggle/", **HOST)
+        self.unit.refresh_from_db()
+        self.assertFalse(self.unit.is_active)
+        self.assertEqual(Unit.objects.count(), 1)

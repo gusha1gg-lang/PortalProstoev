@@ -214,6 +214,9 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .inline-form input[type="text"] {
     font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px;
 }
+.inline-form select {
+    font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px;
+}
 .sync-form label.checkbox {
     flex-direction: row; align-items: center; gap: 6px; font-size: 14px;
 }

@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block title %}Производственная структура — PortalProstoev{% endblock %}
+
+{% block content %}
+  <p class="muted">
+    <a href="{% url 'catalog:classification' %}">← К классификации вины ИТ</a>
+  </p>
+
+  <h2>Производственная структура</h2>
+
+  <p class="muted">
+    Уровни: <b>Цех → Участок → Агрегат</b>. Агрегат может быть <b>общецеховым</b> — тогда он
+    стоит прямо на цехе, без участка. Здесь можно добавить и поправить записи вручную;
+    позже сюда добавится импорт из источника (см. `question.md`, В9).
+    Ничего не удаляется — ненужное <b>скрывается</b> и возвращается обратно.
+  </p>
+
+  <div class="card">
+    <h3>Добавить цех</h3>
+    <form method="post" action="{% url 'catalog:workshop_add' %}" class="sync-form">
+      {% csrf_token %}
+      <label>Название
+        <input type="text" name="name" maxlength="255" placeholder="например ТЭСЦ-4" required>
+      </label>
+      <label>Код (необязательно)
+        <input type="text" name="code" maxlength="32">
+      </label>
+      <button type="submit">Добавить цех</button>
+    </form>
+  </div>
+
+  <p class="muted">
+    Цехов: <b>{{ total_count }}</b> (показываются {{ active_count }}) ·
+    участков: <b>{{ section_count }}</b> · агрегатов: <b>{{ unit_count }}</b>.
+  </p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Цех</th>
+        <th class="num">Участков</th>
+        <th class="num">Агрегатов</th>
+        <th>Состояние</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for workshop in workshops %}
+        <tr{% if not workshop.is_active %} class="row-inactive"{% endif %}>
+          <td>
+            <a href="{% url 'catalog:workshop' workshop.pk %}">{{ workshop.name }}</a>
+            {% if workshop.code %}<small class="muted">({{ workshop.code }})</small>{% endif %}
+          </td>
+          <td class="num">{{ workshop.sections.all|length }}</td>
+          <td class="num">{{ workshop.units.all|length }}</td>
+          <td>
+            {% if workshop.is_active %}
+              <span class="badge corrected">виден</span>
+            {% else %}
+              <span class="badge removed">скрыт</span>
+            {% endif %}
+          </td>
+          <td>
+            <form method="post" action="{% url 'catalog:workshop_toggle' workshop.pk %}" class="inline-form">
+              {% csrf_token %}
+              {% if workshop.is_active %}
+                <button type="submit" class="button secondary">Скрыть</button>
+              {% else %}
+                <button type="submit" class="button">Вернуть</button>
+              {% endif %}
+            </form>
+          </td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="5" class="muted">Цехов пока нет — добавьте первый выше.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% endblock %}

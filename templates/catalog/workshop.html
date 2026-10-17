@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+
+{% block title %}{{ workshop.name }} — структура — PortalProstoev{% endblock %}
+
+{% block content %}
+  <p class="muted">
+    <a href="{% url 'catalog:structure' %}">← К списку цехов</a>
+  </p>
+
+  <h2>Цех «{{ workshop.name }}»</h2>
+
+  <div class="card">
+    <h3>Свойства цеха</h3>
+    <form method="post" action="{% url 'catalog:workshop' workshop.pk %}" class="sync-form">
+      {% csrf_token %}
+      <label>Название
+        <input type="text" name="name" value="{{ workshop.name }}" maxlength="255" required>
+      </label>
+      <label>Код (необязательно)
+        <input type="text" name="code" value="{{ workshop.code }}" maxlength="32">
+      </label>
+      <label class="checkbox">
+        <input type="checkbox" name="is_active" {% if workshop.is_active %}checked{% endif %}>
+        Показывать в портале
+      </label>
+      <button type="submit">Сохранить цех</button>
+    </form>
+  </div>
+
+  <h3>Участки ({{ sections|length }})</h3>
+  <p class="muted">Клик по названию открывает участок, где правятся его агрегаты.</p>
+  <table>
+    <thead>
+      <tr>
+        <th>Участок</th>
+        <th>Код</th>
+        <th>Состояние</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for section in sections %}
+        <tr{% if not section.is_active %} class="row-inactive"{% endif %}>
+          <td><a href="{% url 'catalog:section' section.pk %}">{{ section.name }}</a></td>
+          <td class="muted">{{ section.code|default:"—" }}</td>
+          <td>
+            {% if section.is_active %}
+              <span class="badge corrected">виден</span>
+            {% else %}
+              <span class="badge removed">скрыт</span>
+            {% endif %}
+          </td>
+          <td>
+            <form method="post" action="{% url 'catalog:section_toggle' section.pk %}" class="inline-form">
+              {% csrf_token %}
+              {% if section.is_active %}
+                <button type="submit" class="button secondary">Скрыть</button>
+              {% else %}
+                <button type="submit" class="button">Вернуть</button>
+              {% endif %}
+            </form>
+          </td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="4" class="muted">Участков нет — добавьте первый ниже.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="card">
+    <h3>Добавить участок</h3>
+    <form method="post" action="{% url 'catalog:section_add' workshop.pk %}" class="sync-form">
+      {% csrf_token %}
+      <label>Название
+        <input type="text" name="name" maxlength="255" placeholder="например Участок сварки" required>
+      </label>
+      <label>Код (необязательно)
+        <input type="text" name="code" maxlength="32">
+      </label>
+      <button type="submit">Добавить участок</button>
+    </form>
+  </div>
+
+  <h3>Общецеховые агрегаты ({{ workshop_units|length }})</h3>
+  <p class="muted">Агрегаты, стоящие прямо на цехе без участка.</p>
+  <table>
+    <thead>
+      <tr>
+        <th>Код</th>
+        <th>Название и критичность</th>
+        <th>Состояние</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for unit in workshop_units %}
+        <tr{% if not unit.is_active %} class="row-inactive"{% endif %}>
+          <td class="muted">{{ unit.code|default:"—" }}</td>
+          <td>
+            <form method="post" action="{% url 'catalog:unit_edit' unit.pk %}" class="inline-form">
+              {% csrf_token %}
+              <input type="hidden" name="code" value="{{ unit.code }}">
+              <input type="text" name="name" value="{{ unit.name }}" maxlength="255" required>
+              <select name="criticality">
+                {% for value, label in criticality_choices %}
+                  <option value="{{ value }}"{% if unit.criticality == value %} selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+              <button type="submit" class="button secondary">Сохранить</button>
+            </form>
+          </td>
+          <td>
+            {% if unit.is_active %}
+              <span class="badge corrected">виден</span>
+            {% else %}
+              <span class="badge removed">скрыт</span>
+            {% endif %}
+          </td>
+          <td>
+            <form method="post" action="{% url 'catalog:unit_toggle' unit.pk %}" class="inline-form">
+              {% csrf_token %}
+              {% if unit.is_active %}
+                <button type="submit" class="button secondary">Скрыть</button>
+              {% else %}
+                <button type="submit" class="button">Вернуть</button>
+              {% endif %}
+            </form>
+          </td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="4" class="muted">Общецеховых агрегатов нет.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="card">
+    <h3>Добавить общецеховой агрегат</h3>
+    <form method="post" action="{% url 'catalog:workshop_unit_add' workshop.pk %}" class="sync-form">
+      {% csrf_token %}
+      <label>Название
+        <input type="text" name="name" maxlength="255" placeholder="например Компрессорная цеха" required>
+      </label>
+      <label>Код (необязательно)
+        <input type="text" name="code" maxlength="32">
+      </label>
+      <label>Критичность
+        <select name="criticality">
+          {% for value, label in criticality_choices %}
+            <option value="{{ value }}"{% if value == "medium" %} selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <button type="submit">Добавить агрегат</button>
+    </form>
+  </div>
+{% endblock %}
