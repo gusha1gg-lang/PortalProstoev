@@ -6,8 +6,9 @@
 объединяются в **инцидент** (он же «кейс», `DowntimeCase`) — так сохраняется правило
 «один инцидент = один случай, без двойного счёта». Разбор ссылается на этот инцидент.
 
-Сейчас (шаг 1) в модели только «шапка» разбора: номер, ведущий, статус и связь с инцидентом.
-Хронология, чат, мероприятия и согласование добавятся на следующих шагах.
+Сейчас готовы шаги 1–4: «шапка» разбора (номер, ведущий, статус, связь с инцидентом),
+хронология, участники и чат с упоминаниями, мероприятия и шаблоны. На шаге 5 добавляется
+**согласование**: разбор согласуют все назначенные согласующие, можно «вернуть на доработку».
 """
 from django.conf import settings
 from django.db import models
@@ -90,13 +91,12 @@ class IncidentReview(TimeStampedModel):
 
 
 # Какие переходы статуса разрешены и как подписать кнопку.
-# Пока (шаг 2) статус меняется вручную. На шаге 5 «Согласовать» станет результатом
-# согласования назначенными согласующими.
+# «На согласование» и «Продолжить» — вручную. Статус «Согласован» ставится
+# автоматически, когда **все** назначенные согласующие согласовали (шаг 5),
+# а «На доработке» — когда кто-то отклонил.
 STATUS_TRANSITIONS = {
     (IncidentReview.Status.DRAFT, IncidentReview.Status.IN_PROGRESS): "В работу",
     (IncidentReview.Status.IN_PROGRESS, IncidentReview.Status.ON_APPROVAL): "На согласование",
-    (IncidentReview.Status.ON_APPROVAL, IncidentReview.Status.APPROVED): "Согласовать",
-    (IncidentReview.Status.ON_APPROVAL, IncidentReview.Status.REWORK): "Вернуть на доработку",
     (IncidentReview.Status.REWORK, IncidentReview.Status.IN_PROGRESS): "Продолжить",
 }
 
@@ -133,6 +133,51 @@ class ReviewParticipant(TimeStampedModel):
 
     def __str__(self):
         return f"{self.user} · {self.review.number}"
+
+
+class ReviewApproval(TimeStampedModel):
+    """Решение согласующего по разбору.
+
+    Когда разбор уходит «На согласование», для каждого согласующего создаётся запись
+    с решением «ждём». Разбор становится **Согласован** автоматически, когда **все**
+    согласующие согласовали. Если кто-то отклонил — разбор уходит «На доработке».
+    """
+
+    class Decision(models.TextChoices):
+        PENDING = "pending", "Ждём решения"
+        APPROVED = "approved", "Согласовано"
+        REJECTED = "rejected", "Отклонено (на доработку)"
+
+    review = models.ForeignKey(
+        IncidentReview,
+        on_delete=models.CASCADE,
+        related_name="approvals",
+        verbose_name="Разбор",
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="review_approvals",
+        verbose_name="Согласующий",
+    )
+    decision = models.CharField(
+        "Решение", max_length=16, choices=Decision.choices, default=Decision.PENDING
+    )
+    comment = models.TextField("Комментарий", blank=True)
+    decided_at = models.DateTimeField("Когда решено", null=True, blank=True)
+
+    class Meta:
+        verbose_name = "Согласование разбора"
+        verbose_name_plural = "Согласования разборов"
+        ordering = ["user__username"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["review", "user"], name="uniq_review_approval"
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.user} · {self.review.number} · {self.get_decision_display()}"
 
 
 class ReviewMessage(TimeStampedModel):
@@ -205,6 +250,7 @@ class ReviewLog(TimeStampedModel):
         CREATED = "created", "Создание"
         STATUS = "status", "Смена статуса"
         UPDATED = "updated", "Изменение"
+        APPROVAL = "approval", "Согласование"
 
     review = models.ForeignKey(
         IncidentReview,

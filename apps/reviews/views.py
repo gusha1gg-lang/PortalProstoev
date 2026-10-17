@@ -24,7 +24,7 @@ from apps.accounts.decorators import role_required
 from apps.catalog.models import ItFaultCategory
 from apps.downtimes.models import DowntimeEvent
 
-from .models import ActionTemplate, IncidentReview, ReviewAction
+from .models import ActionTemplate, IncidentReview, ReviewAction, ReviewApproval
 from .permissions import (
     REVIEW_ROLES,
     can_edit_review,
@@ -39,15 +39,18 @@ from .services import (
     add_participant,
     add_review_action,
     add_timeline_entry,
+    approve,
     change_status,
     create_review_from_events,
     delete_review_action,
     delete_timeline_entry,
     eligible_leads,
     post_review_message,
+    reject,
     remove_message,
     remove_participant,
     set_action_status,
+    set_approver,
     update_review_action,
 )
 
@@ -179,6 +182,11 @@ def review_detail(request, pk):
         "templates": active_templates_for(review.case.fault_category),
         "review_logs": review.logs.select_related("user")[:50],
         "participants": review.participants.select_related("user"),
+        "approvals": review.approvals.select_related("user"),
+        "my_approval": review.approvals.filter(user=request.user).first(),
+        "can_approve": can_edit_review(request.user, review)
+        and review.status == IncidentReview.Status.ON_APPROVAL
+        and review.participants.filter(user=request.user, is_approver=True).exists(),
         "all_users": get_user_model().objects.filter(is_active=True).order_by("username"),
         "transitions": review.available_transitions(),
         "can_manage": can_manage_reviews(request.user),
@@ -535,3 +543,52 @@ def template_toggle(request, pk):
             "Шаблон скрыт." if template.is_active else "Шаблон возвращён.",
         )
     return redirect("reviews:templates")
+
+
+# --- Согласование ---
+
+@login_required
+def approval_decide(request, pk):
+    """Согласующий согласует разбор или возвращает его на доработку."""
+    review = get_object_or_404(IncidentReview, pk=pk)
+    if request.method != "POST":
+        return redirect("reviews:detail", pk=review.pk)
+    if not can_edit_review(request.user, review):
+        raise PermissionDenied
+    if not review.participants.filter(user=request.user, is_approver=True).exists():
+        raise PermissionDenied
+
+    decision = (request.POST.get("decision") or "").strip()
+    comment = request.POST.get("comment")
+    try:
+        if decision == "approve":
+            approve(review, user=request.user, comment=comment)
+            messages.success(request, "Разбор согласован.")
+        elif decision == "reject":
+            reject(review, user=request.user, comment=comment)
+            messages.success(request, "Разбор возвращён на доработку.")
+        else:
+            raise ValueError("Неизвестное решение по согласованию.")
+    except ValueError as error:
+        messages.error(request, str(error))
+    return redirect("reviews:detail", pk=review.pk)
+
+
+@login_required
+def approver_toggle(request, pk, user_pk):
+    """Назначает участника согласующим или снимает его (роли и ведущий)."""
+    review = get_object_or_404(IncidentReview, pk=pk)
+    if request.method != "POST":
+        return redirect("reviews:detail", pk=review.pk)
+    if not can_manage_review(request.user, review):
+        raise PermissionDenied
+
+    user = get_object_or_404(get_user_model(), pk=user_pk)
+    is_approver = request.POST.get("value") == "on"
+    set_approver(review, user, is_approver, by=request.user)
+    messages.success(
+        request,
+        f"{user.get_username()}: "
+        + ("назначен согласующим." if is_approver else "снят с согласования."),
+    )
+    return redirect("reviews:detail", pk=review.pk)

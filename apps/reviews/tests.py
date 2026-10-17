@@ -19,6 +19,7 @@ from .models import (
     ActionTemplate,
     IncidentReview,
     ReviewAction,
+    ReviewApproval,
     ReviewLog,
     ReviewMessage,
     ReviewParticipant,
@@ -28,6 +29,7 @@ from .services import (
     active_templates_for,
     add_participant,
     add_review_action,
+    approve,
     add_timeline_entry,
     change_status,
     create_review_from_events,
@@ -37,7 +39,9 @@ from .services import (
     extract_mentions,
     post_review_message,
     remove_participant,
+    reject,
     set_action_status,
+    set_approver,
     update_review_action,
 )
 
@@ -884,3 +888,208 @@ class TemplateViewTests(ReviewTestBase):
         template.refresh_from_db()
         self.assertEqual(template.title, "Новое")
         self.assertEqual(template.order, 5)
+
+
+class ApprovalServiceTests(ReviewTestBase):
+    def make_review(self, status=IncidentReview.Status.IN_PROGRESS, approvers=()):
+        event = self.make_event("2026-10-01 10:00", "2026-10-01 10:30")
+        review, _ = create_review_from_events(
+            [event], lead=self.specialist, created_by=self.specialist
+        )
+        for user in approvers:
+            set_approver(review, user, True, by=self.specialist)
+        if status == IncidentReview.Status.DRAFT:
+            return review
+        # Идём «правильным» путём: Черновик → В работе, а при необходимости — «На согласование»
+        # (тогда создаются решения согласующих).
+        change_status(review, IncidentReview.Status.IN_PROGRESS, user=self.specialist)
+        if status == IncidentReview.Status.ON_APPROVAL:
+            change_status(review, IncidentReview.Status.ON_APPROVAL, user=self.specialist)
+        return review
+
+    def test_enter_approval_without_approvers_raises(self):
+        review = self.make_review(status=IncidentReview.Status.IN_PROGRESS)
+        with self.assertRaises(ValueError):
+            change_status(review, IncidentReview.Status.ON_APPROVAL, user=self.specialist)
+
+    def test_set_approver_creates_participant(self):
+        review = self.make_review()
+        participant = set_approver(review, self.operator, True, by=self.specialist)
+        self.assertTrue(participant.is_approver)
+        self.assertTrue(review.participants.filter(user=self.operator).exists())
+
+    def test_enter_approval_creates_pending_decisions(self):
+        review = self.make_review(
+            status=IncidentReview.Status.IN_PROGRESS, approvers=[self.operator, self.manager]
+        )
+        change_status(review, IncidentReview.Status.ON_APPROVAL, user=self.specialist)
+        review.refresh_from_db()
+        self.assertEqual(review.status, IncidentReview.Status.ON_APPROVAL)
+        self.assertEqual(review.approvals.count(), 2)
+        self.assertFalse(
+            review.approvals.exclude(decision=ReviewApproval.Decision.PENDING).exists()
+        )
+
+    def test_all_approvers_approve_means_approved(self):
+        review = self.make_review(
+            status=IncidentReview.Status.ON_APPROVAL, approvers=[self.operator, self.manager]
+        )
+        sync_review = IncidentReview.objects.get(pk=review.pk)
+        approve(sync_review, user=self.operator)
+        sync_review.refresh_from_db()
+        self.assertEqual(sync_review.status, IncidentReview.Status.ON_APPROVAL)
+        approve(sync_review, user=self.manager)
+        sync_review.refresh_from_db()
+        self.assertEqual(sync_review.status, IncidentReview.Status.APPROVED)
+
+    def test_reject_returns_to_rework(self):
+        review = self.make_review(
+            status=IncidentReview.Status.ON_APPROVAL, approvers=[self.operator, self.manager]
+        )
+        reject(review, user=self.operator, comment="Нужно больше деталей")
+        review.refresh_from_db()
+        self.assertEqual(review.status, IncidentReview.Status.REWORK)
+        approval = review.approvals.get(user=self.operator)
+        self.assertEqual(approval.decision, ReviewApproval.Decision.REJECTED)
+        self.assertEqual(approval.comment, "Нужно больше деталей")
+
+    def test_reject_without_comment_raises(self):
+        review = self.make_review(
+            status=IncidentReview.Status.ON_APPROVAL, approvers=[self.operator]
+        )
+        with self.assertRaises(ValueError):
+            reject(review, user=self.operator, comment="   ")
+
+    def test_non_approver_cannot_approve(self):
+        review = self.make_review(
+            status=IncidentReview.Status.ON_APPROVAL, approvers=[self.manager]
+        )
+        add_participant(review, self.operator, by=self.specialist)
+        with self.assertRaises(ValueError):
+            approve(review, user=self.operator)
+
+    def test_cannot_approve_twice(self):
+        review = self.make_review(
+            status=IncidentReview.Status.ON_APPROVAL, approvers=[self.operator, self.manager]
+        )
+        approve(review, user=self.operator)
+        with self.assertRaises(ValueError):
+            approve(review, user=self.operator)
+
+    def test_cannot_approve_outside_approval(self):
+        review = self.make_review(
+            status=IncidentReview.Status.IN_PROGRESS, approvers=[self.operator]
+        )
+        with self.assertRaises(ValueError):
+            approve(review, user=self.operator)
+
+    def test_removing_approver_while_on_approval_cleans_decision(self):
+        review = self.make_review(
+            status=IncidentReview.Status.ON_APPROVAL, approvers=[self.operator, self.manager]
+        )
+        set_approver(review, self.operator, False, by=self.specialist)
+        self.assertFalse(review.approvals.filter(user=self.operator).exists())
+        self.assertTrue(review.approvals.filter(user=self.manager).exists())
+
+    def test_reenter_approval_resets_decisions(self):
+        review = self.make_review(
+            status=IncidentReview.Status.ON_APPROVAL, approvers=[self.operator, self.manager]
+        )
+        approve(review, user=self.operator)
+        review.refresh_from_db()
+        review.status = IncidentReview.Status.REWORK
+        review.save(update_fields=["status"])
+        change_status(review, IncidentReview.Status.IN_PROGRESS, user=self.specialist)
+        change_status(review, IncidentReview.Status.ON_APPROVAL, user=self.specialist)
+        review.refresh_from_db()
+        self.assertFalse(
+            review.approvals.exclude(decision=ReviewApproval.Decision.PENDING).exists()
+        )
+
+
+class ApprovalViewTests(ReviewTestBase):
+    def make_review(self, status=IncidentReview.Status.IN_PROGRESS, approvers=()):
+        event = self.make_event("2026-10-01 10:00", "2026-10-01 10:30")
+        review, _ = create_review_from_events(
+            [event], lead=self.specialist, created_by=self.specialist
+        )
+        for user in approvers:
+            set_approver(review, user, True, by=self.specialist)
+        if status == IncidentReview.Status.DRAFT:
+            return review
+        # Идём «правильным» путём: Черновик → В работе, а при необходимости — «На согласование»
+        # (тогда создаются решения согласующих).
+        change_status(review, IncidentReview.Status.IN_PROGRESS, user=self.specialist)
+        if status == IncidentReview.Status.ON_APPROVAL:
+            change_status(review, IncidentReview.Status.ON_APPROVAL, user=self.specialist)
+        return review
+
+    def test_specialist_marks_approver(self):
+        review = self.make_review()
+        self.client.force_login(self.specialist)
+        response = self.client.post(
+            f"/reviews/{review.pk}/approvers/{self.operator.pk}/toggle/",
+            {"value": "on"},
+            **HOST,
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(review.participants.get(user=self.operator).is_approver)
+
+    def test_participant_cannot_mark_approver(self):
+        review = self.make_review()
+        add_participant(review, self.operator, by=self.specialist)
+        self.client.force_login(self.operator)
+        response = self.client.post(
+            f"/reviews/{review.pk}/approvers/{self.manager.pk}/toggle/",
+            {"value": "on"},
+            **HOST,
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_approver_approves_via_view(self):
+        review = self.make_review(
+            status=IncidentReview.Status.ON_APPROVAL, approvers=[self.operator]
+        )
+        self.client.force_login(self.operator)
+        response = self.client.post(
+            f"/reviews/{review.pk}/approval/decide/",
+            {"decision": "approve", "comment": "Ок"},
+            **HOST,
+        )
+        self.assertEqual(response.status_code, 302)
+        review.refresh_from_db()
+        self.assertEqual(review.status, IncidentReview.Status.APPROVED)
+
+    def test_approver_rejects_via_view(self):
+        review = self.make_review(
+            status=IncidentReview.Status.ON_APPROVAL, approvers=[self.operator, self.manager]
+        )
+        self.client.force_login(self.operator)
+        response = self.client.post(
+            f"/reviews/{review.pk}/approval/decide/",
+            {"decision": "reject", "comment": "мало данных"},
+            **HOST,
+        )
+        self.assertEqual(response.status_code, 302)
+        review.refresh_from_db()
+        self.assertEqual(review.status, IncidentReview.Status.REWORK)
+
+    def test_non_approver_decide_forbidden(self):
+        review = self.make_review(
+            status=IncidentReview.Status.ON_APPROVAL, approvers=[self.manager]
+        )
+        add_participant(review, self.operator, by=self.specialist)
+        self.client.force_login(self.operator)
+        response = self.client.post(
+            f"/reviews/{review.pk}/approval/decide/", {"decision": "approve"}, **HOST
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_card_shows_approval_block(self):
+        review = self.make_review(
+            status=IncidentReview.Status.ON_APPROVAL, approvers=[self.operator]
+        )
+        self.client.force_login(self.specialist)
+        response = self.client.get(f"/reviews/{review.pk}/", **HOST)
+        self.assertContains(response, "Согласование")
+        self.assertContains(response, "ждём решения")

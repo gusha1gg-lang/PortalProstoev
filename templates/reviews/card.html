@@ -22,8 +22,9 @@
       <div class="card">
         <h3>Статус разбора</h3>
         <p class="muted">
-          Сейчас: <b>{{ review.get_status_display }}</b>. Пока статус меняется вручную
-          (на шаге «Согласование» кнопка «Согласовать» станет результатом согласования).
+          Сейчас: <b>{{ review.get_status_display }}</b>. «На согласование» — вручную, дальше
+          согласующие согласуют или вернут на доработку (кнопки — в блоке «Согласование»).
+          Когда согласуют все назначенные, разбор сам станет «Согласован».
         </p>
         <form method="post" action="{% url 'reviews:status' review.pk %}" class="filters">
           {% csrf_token %}
@@ -303,6 +304,11 @@
               <td>{% if p.is_approver %}согласующий{% else %}участник{% endif %}</td>
               {% if can_manage_this %}
                 <td>
+                  <form method="post" action="{% url 'reviews:approver_toggle' review.pk p.user.pk %}" class="inline-form">
+                    {% csrf_token %}
+                    <input type="hidden" name="value" value="{% if p.is_approver %}{% else %}on{% endif %}">
+                    <button type="submit" class="button secondary">{% if p.is_approver %}Снять согласование{% else %}Согласующий{% endif %}</button>
+                  </form>
                   <form method="post" action="{% url 'reviews:participant_remove' review.pk p.user.pk %}" class="inline-form">
                     {% csrf_token %}
                     <button type="submit" class="button secondary">Убрать</button>
@@ -331,6 +337,58 @@
           </label>
           <button type="submit">Добавить</button>
         </form>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <h3>Согласование</h3>
+      <p class="muted">
+        Согласуют <b>все</b> назначенные согласующие (отмечаются в «Участниках»).
+        Когда согласуют все — разбор сам станет «Согласован». Любой согласующий может
+        «отклонить / вернуть на доработку» с пояснением.
+      </p>
+
+      {% if approvals %}
+        <table>
+          <thead>
+            <tr><th>Согласующий</th><th>Решение</th><th>Комментарий</th><th>Когда</th></tr>
+          </thead>
+          <tbody>
+            {% for a in approvals %}
+              <tr>
+                <td>{{ a.user.username }}</td>
+                <td>
+                  {% if a.decision == "approved" %}<span class="badge ok">согласовано</span>
+                  {% elif a.decision == "rejected" %}<span class="badge removed">на доработку</span>
+                  {% else %}<span class="badge">ждём решения</span>{% endif %}
+                </td>
+                <td>{{ a.comment|default:"—" }}</td>
+                <td>{{ a.decided_at|date:"d.m.Y H:i"|default:"—" }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <p class="muted">Согласующие пока не назначены — отметьте их в «Участниках».</p>
+      {% endif %}
+
+      {% if can_approve %}
+        <div class="filters">
+          <form method="post" action="{% url 'reviews:approval_decide' review.pk %}" class="inline-form">
+            {% csrf_token %}
+            <input type="hidden" name="decision" value="approve">
+            <label>Комментарий (необязательно) <input type="text" name="comment" size="30"></label>
+            <button type="submit">Согласовать</button>
+          </form>
+          <form method="post" action="{% url 'reviews:approval_decide' review.pk %}" class="inline-form">
+            {% csrf_token %}
+            <input type="hidden" name="decision" value="reject">
+            <label>Что доработать <input type="text" name="comment" size="30" placeholder="обязательно"></label>
+            <button type="submit" class="button secondary">Отклонить / вернуть на доработку</button>
+          </form>
+        </div>
+      {% elif my_approval %}
+        <p class="muted">Ваше решение: <b>{{ my_approval.get_decision_display }}</b>.</p>
       {% endif %}
     </div>
 

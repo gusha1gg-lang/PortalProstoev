@@ -5,6 +5,7 @@ from .models import (
     ActionTemplate,
     IncidentReview,
     ReviewAction,
+    ReviewApproval,
     ReviewLog,
     ReviewMessage,
     ReviewParticipant,
@@ -56,3 +57,10 @@ class ActionTemplateAdmin(admin.ModelAdmin):
     list_display = ("title", "category", "order", "is_active")
     list_filter = ("is_active", "category")
     search_fields = ("title", "description")
+
+
+@admin.register(ReviewApproval)
+class ReviewApprovalAdmin(admin.ModelAdmin):
+    list_display = ("review", "user", "decision", "decided_at")
+    list_filter = ("decision",)
+    search_fields = ("review__number", "user__username")

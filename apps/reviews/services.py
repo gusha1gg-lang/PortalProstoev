@@ -23,6 +23,7 @@ from .models import (
     ActionTemplate,
     IncidentReview,
     ReviewAction,
+    ReviewApproval,
     ReviewLog,
     ReviewMessage,
     ReviewParticipant,
@@ -103,14 +104,25 @@ def delete_timeline_entry(entry, user):
 
 
 def change_status(review, target, user):
-    """Меняет статус разбора, если переход разрешён. Возвращает (старый, новый) названия."""
+    """Меняет статус разбора, если переход разрешён. Возвращает (старый, новый) названия.
+
+    Перед переходом «На согласование» проверяем, что назначены согласующие; тогда же
+    готовим (или сбрасываем) их решения.
+    """
     allowed = {t for (source, t) in STATUS_TRANSITIONS if source == review.status}
     if target not in allowed:
         raise ValueError("Такой переход статуса недопустим.")
+    if (
+        target == IncidentReview.Status.ON_APPROVAL
+        and not review.participants.filter(is_approver=True).exists()
+    ):
+        raise ValueError("Назначьте хотя бы одного согласующего (на карточке, в участниках).")
 
     old = review.get_status_display()
     review.status = target
     review.save(update_fields=["status", "updated_at"])
+    if target == IncidentReview.Status.ON_APPROVAL:
+        sync_approvals(review)
     ReviewLog.objects.create(
         review=review,
         user=user,
@@ -299,3 +311,119 @@ def delete_review_action(action, user):
         review=review, user=user, action=ReviewLog.Action.UPDATED,
         comment=f"Удалено мероприятие «{title}»",
     )
+
+
+# --- Согласование ---
+
+def sync_approvals(review):
+    """Приводит список согласований к текущим согласующим и сбрасывает решения.
+
+    Вызывается при уходе разбора «На согласование»: решения ставим заново в «ждём»,
+    убранных согласующих — вычищаем.
+    """
+    approver_ids = list(
+        review.participants.filter(is_approver=True).values_list("user_id", flat=True)
+    )
+    review.approvals.exclude(user_id__in=approver_ids).delete()
+    for user_id in approver_ids:
+        ReviewApproval.objects.update_or_create(
+            review=review,
+            user_id=user_id,
+            defaults={
+                "decision": ReviewApproval.Decision.PENDING,
+                "comment": "",
+                "decided_at": None,
+            },
+        )
+    return review.approvals.select_related("user")
+
+
+def set_approver(review, user, is_approver, by=None):
+    """Назначает или снимает согласующего. Если разбор на согласовании — список обновляем."""
+    participant, _ = add_participant(review, user, by=by)
+    if participant.is_approver != is_approver:
+        participant.is_approver = is_approver
+        participant.save(update_fields=["is_approver", "updated_at"])
+        ReviewLog.objects.create(
+            review=review,
+            user=by,
+            action=ReviewLog.Action.APPROVAL,
+            comment=(
+                f"{user.get_username()} назначен согласующим"
+                if is_approver
+                else f"{user.get_username()} снят с согласования"
+            ),
+        )
+    if review.status == IncidentReview.Status.ON_APPROVAL:
+        sync_approvals(review)
+    return participant
+
+
+def _approval_for(review, user):
+    """Решение текущего пользователя; проверяет право согласовать."""
+    if review.status != IncidentReview.Status.ON_APPROVAL:
+        raise ValueError("Разбор сейчас не на согласовании.")
+    if not review.participants.filter(user=user, is_approver=True).exists():
+        raise ValueError("Вы не назначены согласующим по этому разбору.")
+    approval = review.approvals.filter(user=user).first()
+    if approval is None:
+        raise ValueError("Решение по вам не найдено — обновите согласование.")
+    if approval.decision != ReviewApproval.Decision.PENDING:
+        raise ValueError("Вы уже приняли решение по этому разбору.")
+    return approval
+
+
+def approve(review, user, comment=""):
+    """Согласующий согласует. Когда согласовали **все** — разбор становится «Согласован»."""
+    approval = _approval_for(review, user)
+    comment = (comment or "").strip()
+    approval.decision = ReviewApproval.Decision.APPROVED
+    approval.comment = comment
+    approval.decided_at = timezone.now()
+    approval.save(update_fields=["decision", "comment", "decided_at", "updated_at"])
+
+    note = f"Согласовал: {user.get_username()}"
+    if comment:
+        note = f"{note} — {comment}"
+    ReviewLog.objects.create(
+        review=review, user=user, action=ReviewLog.Action.APPROVAL, comment=note
+    )
+
+    if not review.approvals.exclude(decision=ReviewApproval.Decision.APPROVED).exists():
+        review.status = IncidentReview.Status.APPROVED
+        review.save(update_fields=["status", "updated_at"])
+        ReviewLog.objects.create(
+            review=review,
+            user=user,
+            action=ReviewLog.Action.STATUS,
+            comment="Согласовано всеми согласующими",
+        )
+    return approval
+
+
+def reject(review, user, comment):
+    """Согласующий отклоняет: обязательно пишет, что доработать. Разбор — «На доработке»."""
+    comment = (comment or "").strip()
+    if not comment:
+        raise ValueError("Опишите, что нужно доработать.")
+    approval = _approval_for(review, user)
+    approval.decision = ReviewApproval.Decision.REJECTED
+    approval.comment = comment
+    approval.decided_at = timezone.now()
+    approval.save(update_fields=["decision", "comment", "decided_at", "updated_at"])
+
+    ReviewLog.objects.create(
+        review=review,
+        user=user,
+        action=ReviewLog.Action.APPROVAL,
+        comment=f"Вернул на доработку: {user.get_username()} — {comment}",
+    )
+    review.status = IncidentReview.Status.REWORK
+    review.save(update_fields=["status", "updated_at"])
+    ReviewLog.objects.create(
+        review=review,
+        user=user,
+        action=ReviewLog.Action.STATUS,
+        comment="На согласовании → На доработке",
+    )
+    return approval
