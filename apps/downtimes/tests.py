@@ -25,6 +25,10 @@ def dt(text):
     return timezone.make_aware(datetime.strptime(text, "%Y-%m-%d %H:%M"))
 
 
+# Тестовый клиент ходит по имени хоста из ALLOWED_HOSTS (см. примечание в других тестах).
+HOST = {"HTTP_HOST": "localhost"}
+
+
 class UnionDurationTests(TestCase):
     """Расчёт длительности объединением интервалов (без двойного счёта)."""
 
@@ -263,3 +267,70 @@ class DuplicateCandidateTests(DowntimeTestBase):
         self.make_event("2026-10-01 10:00", "2026-10-01 10:10", note="ДМАП")
         self.make_event("2026-10-01 10:30", "2026-10-01 10:40", note="дмап")
         self.assertEqual(len(find_duplicate_candidates()), 1)
+
+
+class DowntimePortalViewTests(DowntimeTestBase):
+    """Список и карточка простоев в портале (этап 11.7)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.other_workshop = Workshop.objects.create(name="Цех-2")
+
+    def test_list_requires_login(self):
+        response = self.client.get("/downtimes/", **HOST)
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/accounts/login/", response.url)
+
+    def test_detail_requires_login(self):
+        event = self.make_event("2026-10-01 10:00", "2026-10-01 10:10")
+        response = self.client.get(f"/downtimes/{event.pk}/", **HOST)
+        self.assertEqual(response.status_code, 302)
+
+    def test_list_shows_events(self):
+        self.make_event("2026-10-01 10:00", "2026-10-01 10:10", note="Камера не работает")
+        self.client.force_login(self.user)
+        response = self.client.get("/downtimes/", **HOST)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Камера не работает")
+
+    def test_list_filter_by_workshop(self):
+        self.make_event("2026-10-01 10:00", "2026-10-01 10:10", note="Свой цех")
+        self.make_event(
+            "2026-10-01 11:00", "2026-10-01 11:10", note="Другой цех", workshop=self.other_workshop
+        )
+        self.client.force_login(self.user)
+        response = self.client.get(f"/downtimes/?workshop={self.other_workshop.pk}", **HOST)
+        self.assertContains(response, "Другой цех")
+        self.assertNotContains(response, "Свой цех")
+
+    def test_list_filter_needs_review(self):
+        self.make_event("2026-10-01 10:00", "2026-10-01 10:10", note="Спокойный")
+        flagged = self.make_event("2026-10-01 11:00", "2026-10-01 11:10", note="Спорный")
+        flagged.needs_review = True
+        flagged.save(update_fields=["needs_review"])
+        self.client.force_login(self.user)
+        response = self.client.get("/downtimes/?needs_review=1", **HOST)
+        self.assertContains(response, "Спорный")
+        self.assertNotContains(response, "Спокойный")
+
+    def test_list_search_by_note(self):
+        self.make_event("2026-10-01 10:00", "2026-10-01 10:10", note="Уникальное слово")
+        self.make_event("2026-10-01 11:00", "2026-10-01 11:10", note="Другое совсем")
+        self.client.force_login(self.user)
+        response = self.client.get("/downtimes/?q=Уникальное", **HOST)
+        self.assertContains(response, "Уникальное слово")
+        self.assertNotContains(response, "Другое совсем")
+
+    def test_detail_shows_event(self):
+        event = self.make_event("2026-10-01 10:00", "2026-10-01 10:10", note="Подробность")
+        self.client.force_login(self.user)
+        response = self.client.get(f"/downtimes/{event.pk}/", **HOST)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Подробность")
+        self.assertContains(response, self.workshop.name)
+
+    def test_detail_missing_returns_404(self):
+        self.client.force_login(self.user)
+        response = self.client.get("/downtimes/999999/", **HOST)
+        self.assertEqual(response.status_code, 404)

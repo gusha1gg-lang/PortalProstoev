@@ -222,6 +222,12 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 }
 .sync-form label.checkbox input { padding: 0; }
 
+/* Раздел «Простои» (этап 11.7) */
+.card-stack > .card { margin-bottom: 16px; }
+table.details { margin: 0; }
+table.details th { width: 220px; }
+.pager { display: flex; align-items: center; gap: 12px; margin-top: 16px; }
+
 @media print {
     .topbar, .filters, .no-print { display: none !important; }
     .print-header { display: block; }

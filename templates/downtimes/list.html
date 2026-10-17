@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+
+{% block title %}Простои — PortalProstoev{% endblock %}
+
+{% block content %}
+  <h2>Простои</h2>
+
+  <p class="muted">
+    Все простои, которые портал прочитал из источника СААРЦ (и заведённые вручную).
+    Отсюда видно, что случилось, где и по чьей вине. Записи, которые источник
+    исправил или снял, помечены и ждут <a href="{% url 'integrations:review' %}">проверки</a>.
+    Откройте простой, чтобы посмотреть карточку.
+  </p>
+
+  <form method="get" class="filters">
+    <label>С даты
+      <input type="date" name="date_from" value="{{ filters.date_from }}">
+    </label>
+    <label>По дату
+      <input type="date" name="date_to" value="{{ filters.date_to }}">
+    </label>
+    <label>Цех
+      <select name="workshop">
+        <option value="">— все —</option>
+        {% for w in workshops %}
+          <option value="{{ w.id }}"{% if filters.workshop == w.id|stringformat:"s" %} selected{% endif %}>{{ w.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Категория вины
+      <select name="category">
+        <option value="">— все —</option>
+        {% for c in categories %}
+          <option value="{{ c.id }}"{% if filters.category == c.id|stringformat:"s" %} selected{% endif %}>{{ c.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Вина
+      <select name="fault_side">
+        <option value="">— все —</option>
+        {% for value, label in fault_sides %}
+          <option value="{{ value }}"{% if filters.fault_side == value %} selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Статус
+      <select name="status">
+        <option value="">— все —</option>
+        {% for value, label in statuses %}
+          <option value="{{ value }}"{% if filters.status == value %} selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Источник
+      <select name="source">
+        <option value="">— все —</option>
+        {% for value, label in sources %}
+          <option value="{{ value }}"{% if filters.source == value %} selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Поиск
+      <input type="text" name="q" value="{{ filters.q }}" placeholder="примечание, ФИО">
+    </label>
+    <label>На проверку
+      <select name="needs_review">
+        <option value="">— все —</option>
+        <option value="1"{% if filters.needs_review %} selected{% endif %}>только на проверку</option>
+      </select>
+    </label>
+    <button type="submit">Показать</button>
+    <a class="button secondary" href="{% url 'downtimes:list' %}">Сбросить</a>
+  </form>
+
+  <p class="muted">Найдено: <b>{{ total }}</b>.</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Начало</th>
+        <th>Окончание</th>
+        <th>Цех / участок / агрегат</th>
+        <th>Категория / причина</th>
+        <th class="num">Длит., мин</th>
+        <th>Вина</th>
+        <th>Статус</th>
+        <th>Примечание</th>
+        <th>Отметки</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for event in page %}
+        <tr>
+          <td>{{ event.started_at|date:"d.m.Y H:i" }}</td>
+          <td>{{ event.ended_at|date:"d.m.Y H:i"|default:"—" }}</td>
+          <td>
+            {{ event.workshop.name }}
+            {% if event.section %}<br><small class="muted">{{ event.section.name }}</small>{% endif %}
+            {% if event.unit %}<br><small class="muted">{{ event.unit.name }}</small>{% endif %}
+          </td>
+          <td>
+            {{ event.fault_category.name|default:"—" }}
+            {% if event.fault_subcategory %}<br><small class="muted">{{ event.fault_subcategory.name }}</small>{% endif %}
+          </td>
+          <td class="num">{{ event.duration_min }}</td>
+          <td>{{ event.get_fault_side_display }}</td>
+          <td>{{ event.get_status_display }}</td>
+          <td>{{ event.note|truncatechars:80|default:"—" }}</td>
+          <td>
+            {% if event.needs_review %}<span class="badge removed">на проверку</span>{% endif %}
+            {% if event.sync_mark %}<span class="badge {{ event.sync_mark }}">{{ event.get_sync_mark_display }}</span>{% endif %}
+            {% if event.case %}<span class="badge corrected">{{ event.case.number }}</span>{% endif %}
+          </td>
+          <td><a class="button secondary" href="{% url 'downtimes:detail' event.pk %}">Открыть</a></td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="10" class="muted">Ничего не найдено. Смягчите фильтры или сбросьте их.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% if page.has_other_pages %}
+    <p class="pager">
+      {% if page.has_previous %}
+        <a class="button secondary" href="?page={{ page.previous_page_number }}{% if querystring %}&amp;{{ querystring }}{% endif %}">← Назад</a>
+      {% endif %}
+      <span class="muted">Страница {{ page.number }} из {{ page.paginator.num_pages }}</span>
+      {% if page.has_next %}
+        <a class="button secondary" href="?page={{ page.next_page_number }}{% if querystring %}&amp;{{ querystring }}{% endif %}">Вперёд →</a>
+      {% endif %}
+    </p>
+  {% endif %}
+{% endblock %}

@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+
+{% block title %}Простой — PortalProstoev{% endblock %}
+
+{% block content %}
+  <p class="muted">
+    <a href="{% url 'downtimes:list' %}">← К списку простоев</a>
+    {% if user.is_staff %}
+      · <a href="/admin/downtimes/downtimeevent/{{ event.pk }}/change/">Открыть в админке</a>
+    {% endif %}
+  </p>
+
+  <h2>
+    Простой: {{ event.workshop.name }}{% if event.unit %} · {{ event.unit.name }}{% endif %}
+    <span class="muted">— {{ event.started_at|date:"d.m.Y H:i" }}</span>
+  </h2>
+
+  <p>
+    {% if event.needs_review %}<span class="badge removed">на проверку</span>{% endif %}
+    {% if event.sync_mark %}<span class="badge {{ event.sync_mark }}">{{ event.get_sync_mark_display }}</span>{% endif %}
+    <span class="badge corrected">{{ event.get_status_display }}</span>
+    <span class="badge">{{ event.get_source_display }}</span>
+  </p>
+
+  <div class="card-stack">
+  <div class="card">
+    <h3>Где и когда</h3>
+    <table class="details">
+      <tbody>
+        <tr><th>Начало</th><td>{{ event.started_at|date:"d.m.Y H:i" }}</td></tr>
+        <tr><th>Окончание</th><td>{{ event.ended_at|date:"d.m.Y H:i"|default:"— (ещё идёт)" }}</td></tr>
+        <tr><th>Длительность</th><td>{{ event.duration_min }} мин</td></tr>
+        <tr><th>Цех</th><td>{{ event.workshop.name }}</td></tr>
+        <tr><th>Участок</th><td>{{ event.section.name|default:"—" }}</td></tr>
+        <tr><th>Агрегат</th><td>{{ event.unit.name|default:"—" }}</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h3>Классификация вины</h3>
+    <table class="details">
+      <tbody>
+        <tr><th>Служба</th><td>{{ event.service|default:"—" }}</td></tr>
+        <tr><th>Вина</th><td>{{ event.get_fault_side_display }}</td></tr>
+        <tr><th>Категория</th><td>{{ event.fault_category.name|default:"—" }}</td></tr>
+        <tr><th>Причина</th><td>{{ event.fault_subcategory.name|default:"—" }}</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h3>Описание</h3>
+    <table class="details">
+      <tbody>
+        <tr><th>Кто зафиксировал</th><td>{{ event.recorded_by_name|default:"—" }}</td></tr>
+        <tr><th>Примечание</th><td>{{ event.note|linebreaksbr|default:"—" }}</td></tr>
+        <tr><th>Непроизведённые тонны</th><td>{{ event.unproduced_tons }}</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h3>Источник и синхронизация</h3>
+    <table class="details">
+      <tbody>
+        <tr><th>Источник</th><td>{{ event.get_source_display }}</td></tr>
+        <tr><th>Внешний ID</th><td>{{ event.external_id|default:"—" }}</td></tr>
+        <tr><th>Ключ строки</th><td>{{ event.source_key|default:"—" }}</td></tr>
+        <tr><th>Последняя синхронизация</th><td>{{ event.synced_at|date:"d.m.Y H:i"|default:"—" }}</td></tr>
+        <tr><th>Отметка</th><td>{{ event.get_sync_mark_display|default:"—" }}</td></tr>
+        <tr>
+          <th>Инцидент (объединение)</th>
+          <td>
+            {% if event.case %}
+              <span class="badge corrected">{{ event.case.number }}</span> {{ event.case.title }}
+            {% else %}
+              — (запись сама по себе)
+            {% endif %}
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h3>Связанные тикеты</h3>
+    {% if tickets %}
+      <table>
+        <thead>
+          <tr><th>Тикет</th><th>Тема</th><th>Статус</th><th></th></tr>
+        </thead>
+        <tbody>
+          {% for t in tickets %}
+            <tr>
+              <td>{{ t.external_id }}</td>
+              <td>{{ t.title|default:"—" }}</td>
+              <td>{{ t.status|default:"—" }}</td>
+              <td>{% if t.url %}<a href="{{ t.url }}" target="_blank" rel="noopener">Открыть</a>{% endif %}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="muted">Тикеты к этому простою пока не привязаны.</p>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h3>История изменений</h3>
+    {% if logs %}
+      <table>
+        <thead>
+          <tr><th>Когда</th><th>Кто</th><th>Действие</th><th>Что изменилось</th></tr>
+        </thead>
+        <tbody>
+          {% for log in logs %}
+            <tr>
+              <td>{{ log.created_at|date:"d.m.Y H:i" }}</td>
+              <td>{{ log.user|default:"—" }}</td>
+              <td>{{ log.action }}</td>
+              <td>
+                {% if log.changes %}
+                  {% for label, before, after in log.changes %}
+                    <div>{{ label }}: <span class="muted">{{ before|default:"—" }}</span> → <b>{{ after|default:"—" }}</b></div>
+                  {% endfor %}
+                {% endif %}
+                {% if log.comment %}<div class="muted">{{ log.comment }}</div>{% endif %}
+                {% if not log.changes and not log.comment %}—{% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="muted">Изменений не было.</p>
+    {% endif %}
+  </div>
+  </div>
+{% endblock %}
