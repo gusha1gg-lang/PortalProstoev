@@ -2,8 +2,17 @@
 from datetime import date
 from decimal import Decimal
 
+from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Group
 from django.db import IntegrityError, transaction
 from django.test import TestCase
+
+from apps.accounts.roles import (
+    ALL_ROLES,
+    ROLE_DOWNTIME_SPECIALIST,
+    ROLE_IT_MANAGER,
+    ROLE_OPERATOR,
+)
 
 from .models import (
     ItFaultCategory,
@@ -13,6 +22,8 @@ from .models import (
     Unit,
     Workshop,
 )
+
+HOST = {"HTTP_HOST": "localhost"}
 
 
 class StructureUniqueTests(TestCase):
@@ -117,3 +128,107 @@ class DisplayTests(TestCase):
         section = Section.objects.create(workshop=workshop, name="Участок-1")
         unit = Unit.objects.create(section=section, name="Агрегат-1", code="A-1")
         self.assertEqual(str(unit), "Агрегат-1 (A-1)")
+
+
+class ClassificationViewTests(TestCase):
+    """Редактор классификации вины ИТ прямо в портале (этап 11.6)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        for role in ALL_ROLES:
+            Group.objects.get_or_create(name=role)
+        # Названия причин/категорий в тестах — вымышленные (репозиторий публичный).
+        cls.category = ItFaultCategory.objects.create(code="ARM", name="АРМ")
+        cls.reason = ItFaultSubcategory.objects.create(
+            category=cls.category, code="ARM-01", name="Причина-1"
+        )
+
+    def _user(self, username, role=None):
+        user = get_user_model().objects.create_user(username=username, password="x")
+        if role:
+            user.groups.add(Group.objects.get(name=role))
+        return user
+
+    def test_page_denied_without_role(self):
+        self.client.force_login(self._user("nobody", role=ROLE_OPERATOR))
+        response = self.client.get("/catalog/", **HOST)
+        self.assertEqual(response.status_code, 403)
+
+    def test_page_allowed_for_it_manager(self):
+        self.client.force_login(self._user("itm", role=ROLE_IT_MANAGER))
+        response = self.client.get("/catalog/", **HOST)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "АРМ")
+
+    def test_add_category(self):
+        self.client.force_login(self._user("itm", role=ROLE_IT_MANAGER))
+        response = self.client.post(
+            "/catalog/category/add/",
+            {"code": "INFRA", "name": "Инфраструктура", "description": "Сеть и серверы"},
+            **HOST,
+        )
+        self.assertEqual(response.status_code, 302)
+        category = ItFaultCategory.objects.get(code="INFRA")
+        self.assertTrue(category.is_active)
+
+    def test_add_category_duplicate_code_rejected(self):
+        self.client.force_login(self._user("itm", role=ROLE_IT_MANAGER))
+        self.client.post(
+            "/catalog/category/add/", {"code": "ARM", "name": "Ещё раз"}, **HOST
+        )
+        self.assertEqual(ItFaultCategory.objects.filter(code="ARM").count(), 1)
+
+    def test_edit_category_renames(self):
+        self.client.force_login(self._user("itm", role=ROLE_IT_MANAGER))
+        response = self.client.post(
+            f"/catalog/category/{self.category.pk}/",
+            {"name": "Новое имя", "description": "", "is_active": "on"},
+            **HOST,
+        )
+        self.assertEqual(response.status_code, 302)
+        self.category.refresh_from_db()
+        self.assertEqual(self.category.name, "Новое имя")
+        self.assertTrue(self.category.is_active)
+
+    def test_toggle_category_hides_without_deleting(self):
+        self.client.force_login(self._user("itm", role=ROLE_IT_MANAGER))
+        self.client.post(f"/catalog/category/{self.category.pk}/toggle/", **HOST)
+        self.category.refresh_from_db()
+        self.assertFalse(self.category.is_active)
+        # Не удаляем — можно вернуть обратно.
+        self.client.post(f"/catalog/category/{self.category.pk}/toggle/", **HOST)
+        self.category.refresh_from_db()
+        self.assertTrue(self.category.is_active)
+        self.assertEqual(ItFaultCategory.objects.count(), 1)
+
+    def test_add_reason_assigns_next_code(self):
+        self.client.force_login(self._user("itm", role=ROLE_IT_MANAGER))
+        response = self.client.post(
+            f"/catalog/category/{self.category.pk}/reason/add/",
+            {"name": "Причина-2"},
+            **HOST,
+        )
+        self.assertEqual(response.status_code, 302)
+        reason = ItFaultSubcategory.objects.get(category=self.category, name="Причина-2")
+        self.assertEqual(reason.code, "ARM-02")
+        self.assertTrue(reason.is_active)
+
+    def test_edit_reason_renames(self):
+        self.client.force_login(self._user("itm", role=ROLE_IT_MANAGER))
+        self.client.post(
+            f"/catalog/reason/{self.reason.pk}/edit/", {"name": "Переименовано"}, **HOST
+        )
+        self.reason.refresh_from_db()
+        self.assertEqual(self.reason.name, "Переименовано")
+
+    def test_toggle_reason_hides_without_deleting(self):
+        self.client.force_login(self._user("itm", role=ROLE_IT_MANAGER))
+        self.client.post(f"/catalog/reason/{self.reason.pk}/toggle/", **HOST)
+        self.reason.refresh_from_db()
+        self.assertFalse(self.reason.is_active)
+        self.assertEqual(ItFaultSubcategory.objects.count(), 1)
+
+    def test_specialist_can_edit_classification(self):
+        self.client.force_login(self._user("sp", role=ROLE_DOWNTIME_SPECIALIST))
+        response = self.client.get("/catalog/", **HOST)
+        self.assertEqual(response.status_code, 200)

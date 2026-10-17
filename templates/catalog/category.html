@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+
+{% block title %}{{ category.name }} — классификация — PortalProstoev{% endblock %}
+
+{% block content %}
+  <p class="muted">
+    <a href="{% url 'catalog:classification' %}">← К списку категорий</a>
+  </p>
+
+  <h2>Категория «{{ category.name }}»</h2>
+
+  <div class="card">
+    <h3>Свойства категории</h3>
+    <form method="post" action="{% url 'catalog:category' category.pk %}" class="sync-form">
+      {% csrf_token %}
+      <label>Название
+        <input type="text" name="name" value="{{ category.name }}" maxlength="255" required>
+      </label>
+      <label>Описание (необязательно)
+        <input type="text" name="description" value="{{ category.description }}" maxlength="255">
+      </label>
+      <label class="checkbox">
+        <input type="checkbox" name="is_active" {% if category.is_active %}checked{% endif %}>
+        Показывать в портале
+      </label>
+      <button type="submit">Сохранить категорию</button>
+    </form>
+    <p class="muted">Код категории ({{ category.code }}) не меняется — на него опираются выгрузки.</p>
+  </div>
+
+  <h3>Причины ({{ active_reasons }} из {{ reasons|length }} показаны)</h3>
+  <p class="muted">
+    Причина — второй уровень классификации. Скрытая причина остаётся в старых записях,
+    но не предлагается при выборе.
+  </p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Код</th>
+        <th>Причина</th>
+        <th>Состояние</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for reason in reasons %}
+        <tr{% if not reason.is_active %} class="row-inactive"{% endif %}>
+          <td class="muted">{{ reason.code }}</td>
+          <td>
+            <form method="post" action="{% url 'catalog:subcategory_edit' reason.pk %}" class="inline-form">
+              {% csrf_token %}
+              <input type="text" name="name" value="{{ reason.name }}" maxlength="255" required>
+              <button type="submit" class="button secondary">Сохранить</button>
+            </form>
+          </td>
+          <td>
+            {% if reason.is_active %}
+              <span class="badge corrected">видна</span>
+            {% else %}
+              <span class="badge removed">скрыта</span>
+            {% endif %}
+          </td>
+          <td>
+            <form method="post" action="{% url 'catalog:subcategory_toggle' reason.pk %}" class="inline-form">
+              {% csrf_token %}
+              {% if reason.is_active %}
+                <button type="submit" class="button secondary">Скрыть</button>
+              {% else %}
+                <button type="submit" class="button">Вернуть</button>
+              {% endif %}
+            </form>
+          </td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="4" class="muted">Причин пока нет — добавьте первую ниже.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="card">
+    <h3>Добавить причину</h3>
+    <form method="post" action="{% url 'catalog:subcategory_add' category.pk %}" class="sync-form">
+      {% csrf_token %}
+      <label>Название
+        <input type="text" name="name" maxlength="255" placeholder="например Программный сбой" required>
+      </label>
+      <label>Код (необязательно — проставим сами)
+        <input type="text" name="code" maxlength="32" placeholder="{{ category.code }}-NN">
+      </label>
+      <button type="submit">Добавить причину</button>
+    </form>
+  </div>
+{% endblock %}

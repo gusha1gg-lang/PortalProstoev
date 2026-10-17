@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block title %}Классификация вины ИТ — PortalProstoev{% endblock %}
+
+{% block content %}
+  <h2>Классификация вины ИТ</h2>
+
+  <p class="muted">
+    Здесь ведётся список причин простоя в двух уровнях: <b>категория → причина</b>.
+    Ничего не удаляется — ненужную категорию или причину можно <b>скрыть</b> и вернуть обратно:
+    на старые записи они всё равно ссылаются.
+  </p>
+
+  <div class="card">
+    <h3>Добавить категорию</h3>
+    <form method="post" action="{% url 'catalog:category_add' %}" class="sync-form">
+      {% csrf_token %}
+      <label>Код (латиницей, короткий)
+        <input type="text" name="code" maxlength="32" placeholder="например ARM" required>
+      </label>
+      <label>Название
+        <input type="text" name="name" maxlength="255" placeholder="например АРМ" required>
+      </label>
+      <label>Описание (необязательно)
+        <input type="text" name="description" maxlength="255">
+      </label>
+      <button type="submit">Добавить категорию</button>
+    </form>
+  </div>
+
+  <p class="muted">
+    Всего категорий: <b>{{ total_count }}</b>, показываются: <b>{{ active_count }}</b>.
+  </p>
+
+  {% for category in categories %}
+    <div class="card{% if not category.is_active %} card-inactive{% endif %}">
+      <h3>
+        {{ category.name }}
+        <span class="muted">({{ category.code }})</span>
+        {% if category.is_active %}
+          <span class="badge corrected">видна</span>
+        {% else %}
+          <span class="badge removed">скрыта</span>
+        {% endif %}
+      </h3>
+      {% if category.description %}<p class="muted">{{ category.description }}</p>{% endif %}
+
+      <p>
+        Причин: <b>{{ category.subcategories.count }}</b>.
+        <a class="button secondary" href="{% url 'catalog:category' category.pk %}">Открыть и править</a>
+        <form method="post" action="{% url 'catalog:category_toggle' category.pk %}" class="inline-form">
+          {% csrf_token %}
+          {% if category.is_active %}
+            <button type="submit" class="button secondary">Скрыть</button>
+          {% else %}
+            <button type="submit" class="button">Вернуть</button>
+          {% endif %}
+        </form>
+      </p>
+    </div>
+  {% empty %}
+    <p class="muted">Категорий пока нет — добавьте первую выше.</p>
+  {% endfor %}
+
+  <p class="muted">
+    <a href="{% url 'integrations:sync' %}">← К синхронизации</a>
+  </p>
+{% endblock %}

@@ -207,6 +207,18 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .badge.adjusted { background: #fff7e6; color: var(--warn); border-color: #f0d9a8; }
 .badge.removed { background: #fbeceb; color: var(--bad); border-color: #f0c4c0; }
 
+/* Классификация вины ИТ (этап 11.6) */
+.card-inactive { background: #fafbfd; border-style: dashed; }
+.row-inactive td { color: var(--muted); }
+.inline-form { display: inline-flex; align-items: center; gap: 6px; margin: 0; flex-wrap: wrap; }
+.inline-form input[type="text"] {
+    font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px;
+}
+.sync-form label.checkbox {
+    flex-direction: row; align-items: center; gap: 6px; font-size: 14px;
+}
+.sync-form label.checkbox input { padding: 0; }
+
 @media print {
     .topbar, .filters, .no-print { display: none !important; }
     .print-header { display: block; }
